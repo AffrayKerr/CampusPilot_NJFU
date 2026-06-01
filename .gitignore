@@ -1,0 +1,35 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Flask
+instance/
+.webassets-cache
+
+# Runtime database files
+database/*.db
+database/*.sqlite
+database/*.sqlite3
+
+# Logs
+logs/*.log
+*.log
+
+# Cookies and sensitive config
+cookies/*
+config/user.conf
+config/mail.conf
+
+# OS and editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
