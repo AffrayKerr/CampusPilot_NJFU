@@ -3,7 +3,9 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template
 from flask_cors import CORS
 
+from api.account_api import account_bp
 from api.auth_api import auth_bp
+from api.campus_api import campus_bp
 from api.feedback_api import feedback_bp
 from api.log_api import log_bp
 from api.notification_api import notification_bp
@@ -24,6 +26,8 @@ def create_app():
     app.config.from_object("config.Config")
     CORS(app)
 
+    app.register_blueprint(account_bp, url_prefix="/api/account")
+    app.register_blueprint(campus_bp, url_prefix="/api/campus")
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(schedule_bp, url_prefix="/api/schedule")
     app.register_blueprint(seat_bp, url_prefix="/api/seat")

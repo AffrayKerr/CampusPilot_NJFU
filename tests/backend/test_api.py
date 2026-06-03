@@ -25,6 +25,8 @@ def test_ping_endpoints():
     client = app.test_client()
 
     paths = [
+        "/api/account/ping",
+        "/api/campus/ping",
         "/api/auth/ping",
         "/api/schedule/ping",
         "/api/seat/ping",

@@ -51,6 +51,22 @@ def validate_notification_channel(channel):
     return channel in ["email", "desktop", "all"]
 
 
+def validate_role(role):
+    return role in ["user", "admin"]
+
+
+def validate_username(username):
+    if not isinstance(username, str):
+        return False
+    if len(username) < 3 or len(username) > 32:
+        return False
+    return username.replace("_", "").replace("-", "").isalnum()
+
+
+def validate_password(password):
+    return isinstance(password, str) and len(password) >= 6
+
+
 def normalize_bool(value):
     if isinstance(value, bool):
         return "true" if value else "false"
