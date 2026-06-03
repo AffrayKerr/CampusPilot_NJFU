@@ -1,5 +1,6 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
+from services.auth_service import login_required
 from services.response_helper import error_response, success_response
 from services.shell_runner import run_shell
 from utils.validators import require_fields, validate_priority, validate_task_status
@@ -14,30 +15,35 @@ def ping():
 
 
 @schedule_bp.route("/sync", methods=["POST"])
+@login_required
 def sync_schedule():
-    result = run_shell("shell/schedule/sync_schedule.sh", timeout=120)
+    result = run_shell("shell/schedule/sync_schedule.sh", [g.current_user["id"]], timeout=120)
     return jsonify(result)
 
 
 @schedule_bp.route("/exam/sync", methods=["POST"])
+@login_required
 def sync_exam():
-    result = run_shell("shell/schedule/sync_exam.sh", timeout=120)
+    result = run_shell("shell/schedule/sync_exam.sh", [g.current_user["id"]], timeout=120)
     return jsonify(result)
 
 
 @schedule_bp.route("/today", methods=["GET"])
+@login_required
 def list_today():
-    result = run_shell("shell/schedule/list_today.sh", timeout=30)
+    result = run_shell("shell/schedule/list_today.sh", [g.current_user["id"]], timeout=30)
     return jsonify(result)
 
 
 @schedule_bp.route("/changes/detect", methods=["POST"])
+@login_required
 def detect_changes():
-    result = run_shell("shell/schedule/detect_changes.sh", timeout=120)
+    result = run_shell("shell/schedule/detect_changes.sh", [g.current_user["id"]], timeout=120)
     return jsonify(result)
 
 
 @schedule_bp.route("/task/add", methods=["POST"])
+@login_required
 def add_task():
     data = request.get_json(silent=True) or {}
 
@@ -52,6 +58,7 @@ def add_task():
     result = run_shell(
         "shell/schedule/add_task.sh",
         [
+            g.current_user["id"],
             data["title"],
             data["deadline"],
             priority,
@@ -66,6 +73,7 @@ def add_task():
 
 
 @schedule_bp.route("/task/update", methods=["POST"])
+@login_required
 def update_task():
     data = request.get_json(silent=True) or {}
 
@@ -84,6 +92,7 @@ def update_task():
     result = run_shell(
         "shell/schedule/update_task.sh",
         [
+            g.current_user["id"],
             data["id"],
             data.get("title", ""),
             data.get("deadline", ""),
@@ -100,6 +109,7 @@ def update_task():
 
 
 @schedule_bp.route("/task/delete", methods=["POST"])
+@login_required
 def delete_task():
     data = request.get_json(silent=True) or {}
 
@@ -107,5 +117,5 @@ def delete_task():
     if missing:
         return error_response(f"Missing fields: {', '.join(missing)}")
 
-    result = run_shell("shell/schedule/delete_task.sh", [data["id"]], timeout=30)
+    result = run_shell("shell/schedule/delete_task.sh", [g.current_user["id"], data["id"]], timeout=30)
     return jsonify(result)

@@ -1,8 +1,8 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify
 
-from services.response_helper import error_response, success_response
+from services.auth_service import login_required
+from services.response_helper import success_response
 from services.shell_runner import run_shell
-from utils.validators import require_fields
 
 
 auth_bp = Blueprint("auth", __name__)
@@ -14,38 +14,32 @@ def ping():
 
 
 @auth_bp.route("/login", methods=["POST"])
+@login_required
 def login():
-    data = request.get_json(silent=True) or {}
-
-    missing = require_fields(data, ["account", "password"])
-    if missing:
-        return error_response(f"Missing fields: {', '.join(missing)}")
-
     result = run_shell(
-        "shell/auth/login.sh",
-        [
-            data["account"],
-            data["password"],
-            data.get("email", ""),
-        ],
+        "shell/auth/login_bound.sh",
+        [g.current_user["id"]],
         timeout=60,
     )
     return jsonify(result)
 
 
 @auth_bp.route("/status", methods=["GET"])
+@login_required
 def status():
-    result = run_shell("shell/auth/check_session.sh", timeout=20)
+    result = run_shell("shell/auth/check_session.sh", [g.current_user["id"]], timeout=20)
     return jsonify(result)
 
 
 @auth_bp.route("/refresh", methods=["POST"])
+@login_required
 def refresh():
-    result = run_shell("shell/auth/refresh_session.sh", timeout=60)
+    result = run_shell("shell/auth/refresh_session.sh", [g.current_user["id"]], timeout=60)
     return jsonify(result)
 
 
 @auth_bp.route("/logout", methods=["POST"])
+@login_required
 def logout():
-    result = run_shell("shell/auth/logout.sh", timeout=30)
+    result = run_shell("shell/auth/logout.sh", [g.current_user["id"]], timeout=30)
     return jsonify(result)

@@ -43,3 +43,30 @@ def test_ping_endpoints():
 
         assert response.status_code == 200
         assert data["success"] is True
+
+
+def test_business_endpoints_require_login():
+    app = create_app()
+    client = app.test_client()
+
+    protected_requests = [
+        ("GET", "/api/auth/status", None),
+        ("POST", "/api/schedule/sync", {}),
+        ("GET", "/api/schedule/today", None),
+        ("POST", "/api/seat/config", {"seat_no": "A203"}),
+        ("GET", "/api/seat/result", None),
+        ("GET", "/api/logs/list", None),
+        ("GET", "/api/notification/settings", None),
+        ("GET", "/api/user/profile", None),
+    ]
+
+    for method, path, payload in protected_requests:
+        if method == "GET":
+            response = client.get(path)
+        else:
+            response = client.post(path, json=payload)
+
+        data = response.get_json()
+        assert response.status_code == 401
+        assert data["success"] is False
+        assert data["message"] == "Authentication required"

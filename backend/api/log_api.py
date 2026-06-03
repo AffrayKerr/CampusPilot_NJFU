@@ -1,5 +1,6 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
+from services.auth_service import login_required
 from services.response_helper import error_response, success_response
 from services.shell_runner import run_shell
 from utils.validators import validate_log_level, validate_log_module
@@ -14,6 +15,7 @@ def ping():
 
 
 @log_bp.route("/list", methods=["GET"])
+@login_required
 def list_logs():
     module = request.args.get("module", "")
     level = request.args.get("level", "")
@@ -27,24 +29,26 @@ def list_logs():
 
     result = run_shell(
         "shell/system/query_logs.sh",
-        [module, level, limit],
+        [g.current_user["id"], module, level, limit],
         timeout=20,
     )
     return jsonify(result)
 
 
 @log_bp.route("/error", methods=["GET"])
+@login_required
 def list_error_logs():
     limit = request.args.get("limit", 50)
-    result = run_shell("shell/system/query_logs.sh", ["error", "ERROR", limit], timeout=20)
+    result = run_shell("shell/system/query_logs.sh", [g.current_user["id"], "error", "ERROR", limit], timeout=20)
     return jsonify(result)
 
 
 @log_bp.route("/module/<module>", methods=["GET"])
+@login_required
 def list_module_logs(module):
     if not validate_log_module(module):
         return error_response("Invalid log module")
 
     limit = request.args.get("limit", 50)
-    result = run_shell("shell/system/query_logs.sh", [module, "", limit], timeout=20)
+    result = run_shell("shell/system/query_logs.sh", [g.current_user["id"], module, "", limit], timeout=20)
     return jsonify(result)

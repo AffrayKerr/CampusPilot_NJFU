@@ -1,5 +1,7 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
+from services.auth_service import login_required
+from services.db import execute, fetch_one, init_database
 from services.response_helper import error_response, success_response
 from services.shell_runner import run_shell
 from utils.validators import normalize_bool, require_fields
@@ -14,43 +16,57 @@ def ping():
 
 
 @user_bp.route("/profile", methods=["GET"])
+@login_required
 def get_profile():
-    result = run_shell("shell/user/get_profile.sh", timeout=20)
-    return jsonify(result)
+    init_database()
+    user = fetch_one(
+        """
+        SELECT id, username, email, role, created_at, updated_at
+        FROM users
+        WHERE id = ?
+        """,
+        [g.current_user["id"]],
+    )
+    return success_response("User profile", user)
 
 
 @user_bp.route("/profile", methods=["POST"])
+@login_required
 def update_profile():
+    init_database()
     data = request.get_json(silent=True) or {}
 
-    missing = require_fields(data, ["account", "password"])
-    if missing:
-        return error_response(f"Missing fields: {', '.join(missing)}")
+    email = data.get("email", "")
+    enable_email = 1 if data.get("enable_email", False) else 0
+    enable_desktop = 1 if data.get("enable_desktop", True) else 0
 
-    result = run_shell(
-        "shell/user/update_profile.sh",
-        [
-            data["account"],
-            data["password"],
-            data.get("email", ""),
-            normalize_bool(data.get("enable_email", False)),
-            normalize_bool(data.get("enable_desktop", True)),
-        ],
-        timeout=30,
+    execute(
+        "UPDATE users SET email = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        [email, g.current_user["id"]],
     )
-    return jsonify(result)
+    execute(
+        """
+        UPDATE notification_settings
+        SET enable_email = ?, enable_desktop = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ?
+        """,
+        [enable_email, enable_desktop, g.current_user["id"]],
+    )
+    return success_response("User profile updated")
 
 
 @user_bp.route("/export", methods=["POST"])
+@login_required
 def export_config():
     data = request.get_json(silent=True) or {}
     export_path = data.get("export_path", "")
 
-    result = run_shell("shell/user/export_config.sh", [export_path], timeout=30)
+    result = run_shell("shell/user/export_config.sh", [g.current_user["id"], export_path], timeout=30)
     return jsonify(result)
 
 
 @user_bp.route("/import", methods=["POST"])
+@login_required
 def import_config():
     data = request.get_json(silent=True) or {}
 
@@ -58,11 +74,12 @@ def import_config():
     if missing:
         return error_response(f"Missing fields: {', '.join(missing)}")
 
-    result = run_shell("shell/user/import_config.sh", [data["import_path"]], timeout=30)
+    result = run_shell("shell/user/import_config.sh", [g.current_user["id"], data["import_path"]], timeout=30)
     return jsonify(result)
 
 
 @user_bp.route("/statistics", methods=["GET"])
+@login_required
 def get_statistics():
-    result = run_shell("shell/user/get_statistics.sh", timeout=20)
+    result = run_shell("shell/user/get_statistics.sh", [g.current_user["id"]], timeout=20)
     return jsonify(result)

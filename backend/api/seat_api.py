@@ -1,5 +1,6 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
+from services.auth_service import login_required
 from services.response_helper import error_response, success_response
 from services.shell_runner import run_shell
 from utils.validators import normalize_bool, require_fields
@@ -14,6 +15,7 @@ def ping():
 
 
 @seat_bp.route("/config", methods=["POST"])
+@login_required
 def save_config():
     data = request.get_json(silent=True) or {}
 
@@ -24,6 +26,7 @@ def save_config():
     result = run_shell(
         "shell/seat/seat_config.sh",
         [
+            g.current_user["id"],
             data.get("floor", ""),
             data["seat_no"],
             data.get("priority", 1),
@@ -43,15 +46,17 @@ def save_config():
 
 
 @seat_bp.route("/check", methods=["GET"])
+@login_required
 def check_seat():
     floor = request.args.get("floor", "")
     seat_no = request.args.get("seat_no", "")
 
-    result = run_shell("shell/seat/check_seat.sh", [floor, seat_no], timeout=30)
+    result = run_shell("shell/seat/check_seat.sh", [g.current_user["id"], floor, seat_no], timeout=30)
     return jsonify(result)
 
 
 @seat_bp.route("/reserve", methods=["POST"])
+@login_required
 def reserve_seat():
     data = request.get_json(silent=True) or {}
 
@@ -62,6 +67,7 @@ def reserve_seat():
     result = run_shell(
         "shell/seat/reserve_seat.sh",
         [
+            g.current_user["id"],
             data["seat_no"],
             data.get("reserve_date", ""),
             data.get("reserve_start_time", ""),
@@ -73,28 +79,32 @@ def reserve_seat():
 
 
 @seat_bp.route("/start", methods=["POST"])
+@login_required
 def start_worker():
-    result = run_shell("shell/seat/seat_worker.sh", timeout=120)
+    result = run_shell("shell/seat/seat_worker.sh", [g.current_user["id"]], timeout=120)
     return jsonify(result)
 
 
 @seat_bp.route("/retry", methods=["POST"])
+@login_required
 def retry_seat():
-    result = run_shell("shell/seat/retry_seat.sh", timeout=120)
+    result = run_shell("shell/seat/retry_seat.sh", [g.current_user["id"]], timeout=120)
     return jsonify(result)
 
 
 @seat_bp.route("/cancel", methods=["POST"])
+@login_required
 def cancel_seat():
     data = request.get_json(silent=True) or {}
     seat_no = data.get("seat_no", "")
 
-    result = run_shell("shell/seat/cancel_seat.sh", [seat_no], timeout=30)
+    result = run_shell("shell/seat/cancel_seat.sh", [g.current_user["id"], seat_no], timeout=30)
     return jsonify(result)
 
 
 @seat_bp.route("/result", methods=["GET"])
+@login_required
 def list_results():
     limit = request.args.get("limit", 20)
-    result = run_shell("shell/seat/list_results.sh", [limit], timeout=20)
+    result = run_shell("shell/seat/list_results.sh", [g.current_user["id"], limit], timeout=20)
     return jsonify(result)
