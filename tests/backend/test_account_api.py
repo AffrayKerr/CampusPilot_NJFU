@@ -9,6 +9,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 from app import create_app
 from services.crypto_service import decrypt_text, encrypt_text
+from services.db import fetch_one
 
 
 @pytest.fixture()
@@ -47,6 +48,30 @@ def test_register_and_login(app_with_temp_db):
     assert login_data["success"] is True
     assert login_data["data"]["token"]
     assert login_data["data"]["user"]["username"] == "student01"
+
+
+def test_register_ignores_admin_role(app_with_temp_db):
+    client = app_with_temp_db.test_client()
+
+    response = client.post(
+        "/api/account/register",
+        json={
+            "username": "admin_candidate",
+            "password": "secret123",
+            "email": "admin@example.com",
+            "role": "admin",
+        },
+    )
+    data = response.get_json()
+
+    assert response.status_code == 200
+    assert data["success"] is True
+    assert data["data"]["role"] == "user"
+
+    with app_with_temp_db.app_context():
+        user = fetch_one("SELECT role FROM users WHERE username = ?", ["admin_candidate"])
+
+    assert user["role"] == "user"
 
 
 def test_campus_bind_requires_login(app_with_temp_db):

@@ -8,6 +8,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from app import create_app
+from scripts.create_admin import create_admin
 
 
 @pytest.fixture()
@@ -19,16 +20,26 @@ def app_with_temp_db(tmp_path):
     return app
 
 
-def register_and_login(client, username="admin01", role="admin"):
+def register_and_login(client, username="student01"):
     client.post(
         "/api/account/register",
         json={
             "username": username,
             "password": "secret123",
             "email": f"{username}@example.com",
-            "role": role,
         },
     )
+    response = client.post(
+        "/api/account/login",
+        json={"username": username, "password": "secret123"},
+    )
+    return response.get_json()["data"]["token"]
+
+
+def create_admin_and_login(app, client, username="admin01"):
+    with app.app_context():
+        create_admin(username, "secret123", f"{username}@example.com")
+
     response = client.post(
         "/api/account/login",
         json={"username": username, "password": "secret123"},
@@ -49,7 +60,7 @@ def test_admin_routes_require_login(app_with_temp_db):
 
 def test_admin_routes_require_admin_role(app_with_temp_db):
     client = app_with_temp_db.test_client()
-    token = register_and_login(client, username="student01", role="user")
+    token = register_and_login(client, username="student01")
 
     response = client.get("/api/admin/users", headers={"Authorization": f"Bearer {token}"})
     data = response.get_json()
@@ -61,7 +72,7 @@ def test_admin_routes_require_admin_role(app_with_temp_db):
 
 def test_admin_can_update_feedback_email_settings(app_with_temp_db):
     client = app_with_temp_db.test_client()
-    token = register_and_login(client)
+    token = create_admin_and_login(app_with_temp_db, client)
 
     response = client.post(
         "/api/admin/settings/feedback-email",
@@ -88,7 +99,7 @@ def test_admin_can_update_feedback_email_settings(app_with_temp_db):
 
 def test_admin_statistics(app_with_temp_db):
     client = app_with_temp_db.test_client()
-    token = register_and_login(client)
+    token = create_admin_and_login(app_with_temp_db, client)
 
     response = client.get("/api/admin/statistics", headers={"Authorization": f"Bearer {token}"})
     data = response.get_json()

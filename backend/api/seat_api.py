@@ -81,7 +81,21 @@ def reserve_seat():
 @seat_bp.route("/start", methods=["POST"])
 @campus_account_required
 def start_worker():
-    result = run_shell("shell/seat/seat_worker.sh", [g.current_user["id"]], timeout=120)
+    result = run_shell("shell/seat/start_worker.sh", [g.current_user["id"]], timeout=30)
+    return jsonify(result)
+
+
+@seat_bp.route("/stop", methods=["POST"])
+@campus_account_required
+def stop_worker():
+    result = run_shell("shell/seat/stop_worker.sh", [g.current_user["id"]], timeout=30)
+    return jsonify(result)
+
+
+@seat_bp.route("/status", methods=["GET"])
+@campus_account_required
+def worker_status():
+    result = run_shell("shell/seat/worker_status.sh", [g.current_user["id"]], timeout=20)
     return jsonify(result)
 
 

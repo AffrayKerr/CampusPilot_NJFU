@@ -11,7 +11,7 @@ from services.auth_service import (
 )
 from services.db import execute, fetch_one, init_database
 from services.response_helper import error_response, success_response
-from utils.validators import require_fields, validate_password, validate_role, validate_username
+from utils.validators import require_fields, validate_password, validate_username
 
 
 account_bp = Blueprint("account", __name__)
@@ -34,7 +34,7 @@ def register():
     username = data["username"].strip()
     password = data["password"]
     email = data.get("email", "")
-    role = data.get("role", "user")
+    role = "user"
 
     if not validate_username(username):
         return error_response("Invalid username")
@@ -42,17 +42,9 @@ def register():
     if not validate_password(password):
         return error_response("Password must be at least 6 characters")
 
-    if not validate_role(role):
-        return error_response("Invalid role")
-
     existing_user = fetch_one("SELECT id FROM users WHERE username = ?", [username])
     if existing_user:
         return error_response("Username already exists", status_code=409)
-
-    if role == "admin":
-        admin_exists = fetch_one("SELECT id FROM users WHERE role = 'admin' LIMIT 1")
-        if admin_exists:
-            return error_response("Admin account already exists", status_code=403)
 
     user_id = execute(
         """

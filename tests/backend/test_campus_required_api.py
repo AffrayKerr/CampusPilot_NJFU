@@ -46,6 +46,9 @@ def test_school_services_require_campus_binding(app_with_temp_db):
         ("POST", "/api/schedule/exam/sync", {}),
         ("POST", "/api/schedule/changes/detect", {}),
         ("POST", "/api/seat/config", {"seat_no": "A203"}),
+        ("POST", "/api/seat/start", {}),
+        ("POST", "/api/seat/stop", {}),
+        ("GET", "/api/seat/status", None),
         ("GET", "/api/seat/result", None),
     ]
 
