@@ -14,6 +14,23 @@ def ping():
     return success_response("seat api is ready")
 
 
+def build_seat_config_args(data):
+    return [
+        data.get("floor", ""),
+        data["seat_no"],
+        data.get("priority", 1),
+        data.get("reserve_date", ""),
+        data.get("reserve_start_time", ""),
+        data.get("reserve_end_time", ""),
+        data.get("check_start_time", ""),
+        data.get("check_stop_time", ""),
+        data.get("retry_interval", 10),
+        data.get("max_retry_count", 30),
+        data.get("max_duration_minutes", 15),
+        normalize_bool(data.get("enabled", True)),
+    ]
+
+
 @seat_bp.route("/config", methods=["POST"])
 @campus_account_required
 def save_config():
@@ -25,23 +42,46 @@ def save_config():
 
     result = run_shell(
         "shell/seat/seat_config.sh",
-        [
-            g.current_user["id"],
-            data.get("floor", ""),
-            data["seat_no"],
-            data.get("priority", 1),
-            data.get("reserve_date", ""),
-            data.get("reserve_start_time", ""),
-            data.get("reserve_end_time", ""),
-            data.get("check_start_time", ""),
-            data.get("check_stop_time", ""),
-            data.get("retry_interval", 10),
-            data.get("max_retry_count", 30),
-            data.get("max_duration_minutes", 15),
-            normalize_bool(data.get("enabled", True)),
-        ],
+        [g.current_user["id"], *build_seat_config_args(data)],
         timeout=30,
     )
+    return jsonify(result)
+
+
+@seat_bp.route("/config/list", methods=["GET"])
+@campus_account_required
+def list_configs():
+    result = run_shell("shell/seat/list_configs.sh", [g.current_user["id"]], timeout=20)
+    return jsonify(result)
+
+
+@seat_bp.route("/config/update", methods=["POST"])
+@campus_account_required
+def update_config():
+    data = request.get_json(silent=True) or {}
+
+    missing = require_fields(data, ["id", "seat_no"])
+    if missing:
+        return error_response(f"Missing fields: {', '.join(missing)}")
+
+    result = run_shell(
+        "shell/seat/update_config.sh",
+        [g.current_user["id"], data["id"], *build_seat_config_args(data)],
+        timeout=30,
+    )
+    return jsonify(result)
+
+
+@seat_bp.route("/config/delete", methods=["POST"])
+@campus_account_required
+def delete_config():
+    data = request.get_json(silent=True) or {}
+
+    missing = require_fields(data, ["id"])
+    if missing:
+        return error_response(f"Missing fields: {', '.join(missing)}")
+
+    result = run_shell("shell/seat/delete_config.sh", [g.current_user["id"], data["id"]], timeout=30)
     return jsonify(result)
 
 
