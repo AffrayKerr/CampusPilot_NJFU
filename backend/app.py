@@ -9,6 +9,7 @@ from api.log_api import log_bp
 from api.notification_api import notification_bp
 from api.schedule_api import schedule_bp
 from api.seat_api import seat_bp
+from api.user_api import user_bp
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 
@@ -29,6 +30,7 @@ def create_app():
     app.register_blueprint(log_bp, url_prefix="/api/logs")
     app.register_blueprint(notification_bp, url_prefix="/api/notification")
     app.register_blueprint(feedback_bp, url_prefix="/api/feedback")
+    app.register_blueprint(user_bp, url_prefix="/api/user")
 
     @app.route("/")
     def index():
