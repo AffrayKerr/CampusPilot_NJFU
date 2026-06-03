@@ -12,3 +12,4 @@ class Config:
     SESSION_COOKIE_NAME = "campuspilot_session"
     SESSION_TTL_HOURS = int(os.getenv("CAMPUSPILOT_SESSION_TTL_HOURS", "24"))
     ENCRYPTION_KEY = os.getenv("CAMPUSPILOT_ENCRYPTION_KEY", "")
+    ADMIN_EMAIL = os.getenv("CAMPUSPILOT_ADMIN_EMAIL", "")

@@ -26,6 +26,7 @@ def test_ping_endpoints():
 
     paths = [
         "/api/account/ping",
+        "/api/admin/ping",
         "/api/campus/ping",
         "/api/auth/ping",
         "/api/schedule/ping",
