@@ -111,6 +111,7 @@ CREATE TABLE IF NOT EXISTS seat_configs (
     reserve_date TEXT,
     reserve_start_time TEXT,
     reserve_end_time TEXT,
+    reserve_time_slots TEXT,
     check_start_time TEXT,
     check_stop_time TEXT,
     retry_interval INTEGER DEFAULT 10,
