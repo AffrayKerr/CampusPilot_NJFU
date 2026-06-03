@@ -1,6 +1,6 @@
 from flask import Blueprint, g, jsonify, request
 
-from services.auth_service import login_required
+from services.auth_service import campus_account_required, login_required
 from services.response_helper import error_response, success_response
 from services.shell_runner import run_shell
 from utils.validators import require_fields, validate_priority, validate_task_status
@@ -15,14 +15,14 @@ def ping():
 
 
 @schedule_bp.route("/sync", methods=["POST"])
-@login_required
+@campus_account_required
 def sync_schedule():
     result = run_shell("shell/schedule/sync_schedule.sh", [g.current_user["id"]], timeout=120)
     return jsonify(result)
 
 
 @schedule_bp.route("/exam/sync", methods=["POST"])
-@login_required
+@campus_account_required
 def sync_exam():
     result = run_shell("shell/schedule/sync_exam.sh", [g.current_user["id"]], timeout=120)
     return jsonify(result)
@@ -36,7 +36,7 @@ def list_today():
 
 
 @schedule_bp.route("/changes/detect", methods=["POST"])
-@login_required
+@campus_account_required
 def detect_changes():
     result = run_shell("shell/schedule/detect_changes.sh", [g.current_user["id"]], timeout=120)
     return jsonify(result)

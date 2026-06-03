@@ -66,6 +66,17 @@ def get_current_user():
     )
 
 
+def get_bound_campus_account(user_id):
+    return fetch_one(
+        """
+        SELECT id, campus_account, webvpn_cookie_path, last_login_at, session_valid
+        FROM campus_accounts
+        WHERE user_id = ?
+        """,
+        [user_id],
+    )
+
+
 def login_required(view_func):
     @wraps(view_func)
     def wrapper(*args, **kwargs):
@@ -74,6 +85,24 @@ def login_required(view_func):
             return error_response("Authentication required", status_code=401)
 
         g.current_user = user
+        return view_func(*args, **kwargs)
+
+    return wrapper
+
+
+def campus_account_required(view_func):
+    @wraps(view_func)
+    def wrapper(*args, **kwargs):
+        user = get_current_user()
+        if not user:
+            return error_response("Authentication required", status_code=401)
+
+        campus_account = get_bound_campus_account(user["id"])
+        if not campus_account:
+            return error_response("Campus account is not bound", status_code=400)
+
+        g.current_user = user
+        g.campus_account = campus_account
         return view_func(*args, **kwargs)
 
     return wrapper

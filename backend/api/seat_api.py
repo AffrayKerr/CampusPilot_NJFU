@@ -1,6 +1,6 @@
 from flask import Blueprint, g, jsonify, request
 
-from services.auth_service import login_required
+from services.auth_service import campus_account_required
 from services.response_helper import error_response, success_response
 from services.shell_runner import run_shell
 from utils.validators import normalize_bool, require_fields
@@ -15,7 +15,7 @@ def ping():
 
 
 @seat_bp.route("/config", methods=["POST"])
-@login_required
+@campus_account_required
 def save_config():
     data = request.get_json(silent=True) or {}
 
@@ -46,7 +46,7 @@ def save_config():
 
 
 @seat_bp.route("/check", methods=["GET"])
-@login_required
+@campus_account_required
 def check_seat():
     floor = request.args.get("floor", "")
     seat_no = request.args.get("seat_no", "")
@@ -56,7 +56,7 @@ def check_seat():
 
 
 @seat_bp.route("/reserve", methods=["POST"])
-@login_required
+@campus_account_required
 def reserve_seat():
     data = request.get_json(silent=True) or {}
 
@@ -79,21 +79,21 @@ def reserve_seat():
 
 
 @seat_bp.route("/start", methods=["POST"])
-@login_required
+@campus_account_required
 def start_worker():
     result = run_shell("shell/seat/seat_worker.sh", [g.current_user["id"]], timeout=120)
     return jsonify(result)
 
 
 @seat_bp.route("/retry", methods=["POST"])
-@login_required
+@campus_account_required
 def retry_seat():
     result = run_shell("shell/seat/retry_seat.sh", [g.current_user["id"]], timeout=120)
     return jsonify(result)
 
 
 @seat_bp.route("/cancel", methods=["POST"])
-@login_required
+@campus_account_required
 def cancel_seat():
     data = request.get_json(silent=True) or {}
     seat_no = data.get("seat_no", "")
@@ -103,7 +103,7 @@ def cancel_seat():
 
 
 @seat_bp.route("/result", methods=["GET"])
-@login_required
+@campus_account_required
 def list_results():
     limit = request.args.get("limit", 20)
     result = run_shell("shell/seat/list_results.sh", [g.current_user["id"], limit], timeout=20)
