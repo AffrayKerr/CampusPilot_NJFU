@@ -10,6 +10,7 @@ from api.campus_api import campus_bp
 from api.feedback_api import feedback_bp
 from api.log_api import log_bp
 from api.notification_api import notification_bp
+from api.reminder_api import reminder_bp
 from api.schedule_api import schedule_bp
 from api.seat_api import seat_bp
 from api.user_api import user_bp
@@ -35,6 +36,7 @@ def create_app():
     app.register_blueprint(seat_bp, url_prefix="/api/seat")
     app.register_blueprint(log_bp, url_prefix="/api/logs")
     app.register_blueprint(notification_bp, url_prefix="/api/notification")
+    app.register_blueprint(reminder_bp, url_prefix="/api/reminder")
     app.register_blueprint(feedback_bp, url_prefix="/api/feedback")
     app.register_blueprint(user_bp, url_prefix="/api/user")
 

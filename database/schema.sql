@@ -164,6 +164,9 @@ CREATE TABLE IF NOT EXISTS notification_settings (
     enable_seat_result INTEGER DEFAULT 1,
     enable_schedule_reminder INTEGER DEFAULT 1,
     enable_error_alert INTEGER DEFAULT 1,
+    schedule_default_reminders TEXT DEFAULT '[15]',
+    exam_default_reminders TEXT DEFAULT '[1440, 120]',
+    task_default_reminders TEXT DEFAULT '[1440, 120]',
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)

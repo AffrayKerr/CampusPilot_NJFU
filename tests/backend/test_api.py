@@ -33,6 +33,7 @@ def test_ping_endpoints():
         "/api/seat/ping",
         "/api/logs/ping",
         "/api/notification/ping",
+        "/api/reminder/ping",
         "/api/feedback/ping",
         "/api/user/ping",
     ]
@@ -57,6 +58,7 @@ def test_business_endpoints_require_login():
         ("GET", "/api/seat/result", None),
         ("GET", "/api/logs/list", None),
         ("GET", "/api/notification/settings", None),
+        ("GET", "/api/reminder/list", None),
         ("GET", "/api/user/profile", None),
     ]
 
