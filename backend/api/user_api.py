@@ -4,7 +4,7 @@ from services.auth_service import login_required
 from services.db import execute, fetch_one, init_database
 from services.response_helper import error_response, success_response
 from services.shell_runner import run_shell
-from utils.validators import normalize_bool, require_fields
+from utils.validators import require_fields
 
 
 user_bp = Blueprint("user", __name__)
@@ -13,6 +13,11 @@ user_bp = Blueprint("user", __name__)
 @user_bp.route("/ping", methods=["GET"])
 def ping():
     return success_response("user api is ready")
+
+
+def count_query(query, params):
+    row = fetch_one(query, params)
+    return row["count"] if row else 0
 
 
 @user_bp.route("/profile", methods=["GET"])
@@ -81,5 +86,59 @@ def import_config():
 @user_bp.route("/statistics", methods=["GET"])
 @login_required
 def get_statistics():
-    result = run_shell("shell/user/get_statistics.sh", [g.current_user["id"]], timeout=20)
-    return jsonify(result)
+    init_database()
+    user_id = g.current_user["id"]
+    campus_account = fetch_one("SELECT id, session_valid FROM campus_accounts WHERE user_id = ?", [user_id])
+
+    task_total = count_query("SELECT COUNT(*) AS count FROM tasks WHERE user_id = ?", [user_id])
+    task_done = count_query("SELECT COUNT(*) AS count FROM tasks WHERE user_id = ? AND status = 'done'", [user_id])
+    task_pending = count_query("SELECT COUNT(*) AS count FROM tasks WHERE user_id = ? AND status = 'pending'", [user_id])
+    task_cancelled = count_query("SELECT COUNT(*) AS count FROM tasks WHERE user_id = ? AND status = 'cancelled'", [user_id])
+
+    statistics = {
+        "campus_account": {
+            "bound": campus_account is not None,
+            "session_valid": bool(campus_account.get("session_valid")) if campus_account else False,
+        },
+        "schedule": {
+            "course_count": count_query("SELECT COUNT(*) AS count FROM schedules WHERE user_id = ?", [user_id]),
+            "exam_count": count_query("SELECT COUNT(*) AS count FROM exams WHERE user_id = ?", [user_id]),
+            "change_count": count_query("SELECT COUNT(*) AS count FROM change_logs WHERE user_id = ?", [user_id]),
+        },
+        "tasks": {
+            "total": task_total,
+            "pending": task_pending,
+            "done": task_done,
+            "cancelled": task_cancelled,
+            "completion_rate": round(task_done / task_total, 4) if task_total else 0,
+        },
+        "seat": {
+            "config_count": count_query("SELECT COUNT(*) AS count FROM seat_configs WHERE user_id = ?", [user_id]),
+            "enabled_config_count": count_query(
+                "SELECT COUNT(*) AS count FROM seat_configs WHERE user_id = ? AND enabled = 1",
+                [user_id],
+            ),
+            "result_count": count_query("SELECT COUNT(*) AS count FROM seat_results WHERE user_id = ?", [user_id]),
+            "success_count": count_query(
+                "SELECT COUNT(*) AS count FROM seat_results WHERE user_id = ? AND status = 'success'",
+                [user_id],
+            ),
+            "failed_count": count_query(
+                "SELECT COUNT(*) AS count FROM seat_results WHERE user_id = ? AND status IN ('failed', 'failure')",
+                [user_id],
+            ),
+            "error_count": count_query(
+                "SELECT COUNT(*) AS count FROM seat_results WHERE user_id = ? AND status = 'error'",
+                [user_id],
+            ),
+        },
+        "reminders": {
+            "total": count_query("SELECT COUNT(*) AS count FROM reminders WHERE user_id = ?", [user_id]),
+            "enabled": count_query("SELECT COUNT(*) AS count FROM reminders WHERE user_id = ? AND enabled = 1", [user_id]),
+        },
+        "logs": {
+            "total": count_query("SELECT COUNT(*) AS count FROM logs WHERE user_id = ?", [user_id]),
+            "error_count": count_query("SELECT COUNT(*) AS count FROM logs WHERE user_id = ? AND level = 'ERROR'", [user_id]),
+        },
+    }
+    return success_response("User statistics", statistics)
