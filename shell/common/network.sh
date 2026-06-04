@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eu
 
 shell_network_is_available() {
   local url="${1:-https://www.baidu.com}"
