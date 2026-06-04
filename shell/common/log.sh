@@ -23,10 +23,12 @@ shell_log_write() {
   python - "$log_file" "$level" "$module" "$message" "$detail" <<'PY'
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 log_file = Path(sys.argv[1])
 entry = {
+    "timestamp": datetime.now().isoformat(),
     "level": sys.argv[2],
     "module": sys.argv[3],
     "message": sys.argv[4],

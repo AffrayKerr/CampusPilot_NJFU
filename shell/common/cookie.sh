@@ -26,6 +26,8 @@ shell_cookie_read() {
   cookie_file="$(shell_cookie_path "$user_id")"
   if [[ -f "$cookie_file" ]]; then
     cat "$cookie_file"
+  else
+    return 1
   fi
 }
 
