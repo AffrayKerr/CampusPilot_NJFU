@@ -112,9 +112,39 @@ python backend\scripts\create_admin.py --username admin --password Admin123456 -
 |---|---|---|---|
 | GET | `/ping` | 无 | - |
 | POST | `/login` | 登录+绑定 | `shell/auth/login_bound.sh user_id` |
+| POST | `/bind-interactive` | 登录+绑定 | `shell/auth/bind_webvpn_interactive.sh user_id` |
 | GET | `/status` | 登录+绑定 | `shell/auth/check_session.sh user_id` |
 | POST | `/refresh` | 登录+绑定 | `shell/auth/refresh_session.sh user_id` |
 | POST | `/logout` | 登录+绑定 | `shell/auth/logout.sh user_id` |
+
+### 4.1 交互式登录 `/bind-interactive`
+
+**功能：** 启动本地浏览器，用户手动完成 WebVPN 登录，系统自动提取 cookie。
+
+**请求：** 无需 body
+
+**响应：**
+
+```json
+{
+  "success": true,
+  "message": "interactive login completed",
+  "data": {
+    "cookie_count": 2,
+    "cookie_file": "D:\\...\\webvpn.cookie",
+    "final_url": "https://webvpn.njfu.edu.cn/frontend_static/frontend/login/index.html#/"
+  }
+}
+```
+
+**说明：**
+
+- 使用 Selenium 启动浏览器自动打开 `https://webvpn.njfu.edu.cn`
+- 用户在浏览器中手动完成登录（可解决验证码问题）
+- 系统自动检测登录成功并提取 cookie
+- Cookie 自动保存到 `runtime/users/<user_id>/webvpn.cookie`
+- 超时时间：600 秒（10 分钟）
+- 依赖：需要安装 `selenium` 和 Chrome 浏览器
 
 ## 5. 日程与 DDL
 

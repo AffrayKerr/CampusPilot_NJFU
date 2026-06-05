@@ -4,3 +4,4 @@ cryptography==42.0.8
 requests==2.32.3
 pytest==8.2.2
 selenium==4.44.0
+beautifulsoup4==4.12.3
