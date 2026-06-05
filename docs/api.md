@@ -332,3 +332,19 @@ python backend\scripts\create_admin.py --username admin --password Admin123456 -
 | GET | `/statistics` | 登录 | Flask 直接统计个人数据 |
 
 `/api/user/statistics` 返回课程数、考试数、DDL 完成率、抢座成功数、提醒数、错误日志数、校园网绑定状态等，可直接用于个人中心统计卡片。
+
+
+### 5.1 自动同步课表
+
+Shell 脚本: shell/schedule/auto_sync.sh user_id [interval_days]
+
+功能：检查距离上次课表同步是否超过指定天数（默认 7 天），若超过则自动触发 sync_schedule.sh。
+
+建议通过 cron 定时任务每天运行此脚本，实现课表定期自动更新。
+
+crontab 示例：
+
+`ash
+# 每天凌晨 3 点检查所有用户的课表是否需要同步
+0 3 * * * bash /path/to/CampusPilot/shell/schedule/auto_sync.sh user_id 7
+`

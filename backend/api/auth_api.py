@@ -54,3 +54,53 @@ def bind_interactive():
         timeout=600,
     )
     return jsonify(result)
+
+
+@auth_bp.route("/keep-alive", methods=["POST"])
+@campus_account_required
+def keep_alive():
+    result = run_shell(
+        "shell/auth/session_keeper.sh",
+        [g.current_user["id"]],
+        timeout=60,
+    )
+    return jsonify(result)
+
+
+@auth_bp.route("/relogin-status", methods=["GET"])
+@campus_account_required
+def relogin_status():
+    import os
+    from services.db import fetch_one
+
+    user = g.current_user
+    runtime_dir = os.environ.get("USERS_RUNTIME_DIR") or os.path.join(
+        os.path.dirname(__file__), "..", "..", "runtime", "users"
+    )
+    flag_path = os.path.join(runtime_dir, str(user["id"]), "needs_relogin")
+    flag_path = os.path.normpath(flag_path)
+
+    needs_relogin = os.path.isfile(flag_path)
+    flagged_at = None
+    if needs_relogin:
+        try:
+            with open(flag_path, encoding="utf-8") as f:
+                flagged_at = f.read().strip()
+        except OSError:
+            pass
+
+    account = fetch_one(
+        "SELECT session_valid FROM campus_accounts WHERE user_id = ?",
+        [user["id"]],
+    )
+    session_valid = bool(account and account["session_valid"]) if account else False
+
+    return jsonify({
+        "success": True,
+        "message": "Relogin status",
+        "data": {
+            "needs_relogin": needs_relogin,
+            "session_valid": session_valid,
+            "flagged_at": flagged_at,
+        },
+    })
