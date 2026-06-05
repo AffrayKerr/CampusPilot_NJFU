@@ -9,6 +9,7 @@ import os
 import re
 import sqlite3
 import sys
+import time
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -50,9 +51,17 @@ def database_path() -> Path:
     return project_root() / "database" / "campus_pilot.db"
 
 
-def cookie_path(user_id: str) -> Path:
+def user_runtime_dir(user_id: str) -> Path:
     runtime_base = os.environ.get("USERS_RUNTIME_DIR") or str(project_root() / "runtime" / "users")
-    return Path(runtime_base) / user_id / "webvpn.cookie"
+    return Path(runtime_base) / user_id
+
+
+def cookie_path(user_id: str) -> Path:
+    return user_runtime_dir(user_id) / "webvpn.cookie"
+
+
+def chrome_profile_path(user_id: str) -> Path:
+    return user_runtime_dir(user_id) / "chrome_profile"
 
 
 def db_connect() -> sqlite3.Connection:
@@ -171,57 +180,56 @@ def parse_schedule(html: str) -> list[dict[str, Any]]:
 
     table = soup.find("table", {"id": "timetable"})
     if not table:
-        tables = soup.find_all("table")
-        table = next((t for t in tables if len(t.find_all("tr")) >= 3), None)
-    if not table:
         return courses
 
     for row in table.find_all("tr"):
+        # section name is in <th>, course cells are in <td>
+        th = row.find("th")
         cells = row.find_all("td")
-        if len(cells) < 8:
+        if not th or not cells or len(cells) < 7:
             continue
 
-        section = cells[0].get_text(strip=True)
-        if not section or "?/??" in section or "??" in section:
+        section = th.get_text(strip=True).replace("\xa0", "").strip()
+        if not section or section.startswith("星期") or section == "&nbsp;":
             continue
 
-        for weekday, cell in enumerate(cells[1:8], start=1):
-            divs = cell.find_all("div", {"class": "kbcontent"})
-            items = [div.get_text(separator="\n", strip=True) for div in divs]
-            if not items:
-                raw = cell.get_text(separator="\n", strip=True)
-                items = [raw] if raw else []
+        for weekday, cell in enumerate(cells[:7], start=1):
+            # use the visible kbcontent div (kbcontent1 is the compact view, kbcontent is the detailed view)
+            for div in cell.find_all("div", class_="kbcontent"):
+                # split multiple courses within one cell by the separator line
+                raw_html = str(div)
+                blocks = re.split(r"-{5,}", div.get_text(separator="\n"))
+                for block in blocks:
+                    lines = [ln.strip() for ln in block.split("\n") if ln.strip() and ln.strip() != "\xa0"]
+                    if len(lines) < 2:
+                        continue
 
-            for text in items:
-                text = re.sub(r"\s*---------------------\s*", "\n", text)
-                lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
-                if len(lines) < 2:
-                    continue
+                    course_name = lines[0]
+                    if not course_name or course_name == "\xa0":
+                        continue
 
-                course_name = lines[0]
-                if course_name in ("&nbsp;", " ") or "?/??" in course_name:
-                    continue
+                    week_info = ""
+                    teacher = ""
+                    classroom = ""
 
-                week_info = ""
-                teacher = ""
-                classroom = ""
+                    for line in lines[1:]:
+                        if re.search(r"\d+.*[周节]|单周|双周|\(周\)", line):
+                            week_info = line
+                        elif re.search(r"\d{4,}|[A-Z]\d+|阶\d*|教室|楼|馆|校区", line) and not classroom:
+                            classroom = line
+                        elif not teacher and line != course_name and not re.search(r"\d{4,}|\(周\)|周\]", line):
+                            teacher = line
 
-                for line in lines[1:]:
-                    if re.search(r"\d+.*[??]|??|??", line):
-                        week_info = line
-                    elif re.search(r"[A-Z]\d{3}|??|?|?|??", line):
-                        classroom = line
-                    elif not teacher and line != course_name:
-                        teacher = line
+                    courses.append({
+                        "course_name": course_name,
+                        "teacher": teacher,
+                        "week_info": week_info,
+                        "weekday": weekday,
+                        "section": section,
+                        "classroom": classroom,
+                    })
 
-                courses.append({
-                    "course_name": course_name,
-                    "teacher": teacher,
-                    "week_info": week_info,
-                    "weekday": weekday,
-                    "section": section,
-                    "classroom": classroom,
-                })
+    return courses
 
     return courses
 
@@ -248,14 +256,28 @@ def parse_exams(html: str) -> list[dict[str, Any]]:
     return exams
 
 
+def resolve_user_pk(conn: sqlite3.Connection, user_id: str) -> int:
+    """Resolve user_id string to users.id integer.
+
+    Accepts either a numeric string (already an integer PK) or a username.
+    """
+    if user_id.isdigit():
+        return int(user_id)
+    row = conn.execute("SELECT id FROM users WHERE username = ?", (user_id,)).fetchone()
+    if row is None:
+        raise RuntimeError(f"user not found: {user_id!r}")
+    return row["id"]
+
+
 def save_schedules(user_id: str, courses: list[dict[str, Any]]) -> None:
     conn = db_connect()
-    conn.execute("DELETE FROM schedules WHERE user_id = ?", (user_id,))
+    uid = resolve_user_pk(conn, user_id)
+    conn.execute("DELETE FROM schedules WHERE user_id = ?", (uid,))
     for c in courses:
         conn.execute(
             "INSERT INTO schedules (user_id, course_name, teacher, week_info, weekday, section, classroom) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (user_id, c["course_name"], c["teacher"], c["week_info"], c["weekday"], c["section"], c["classroom"]),
+            (uid, c["course_name"], c["teacher"], c["week_info"], c["weekday"], c["section"], c["classroom"]),
         )
     conn.commit()
     conn.close()
@@ -263,12 +285,13 @@ def save_schedules(user_id: str, courses: list[dict[str, Any]]) -> None:
 
 def save_exams(user_id: str, exams: list[dict[str, Any]]) -> None:
     conn = db_connect()
-    conn.execute("DELETE FROM exams WHERE user_id = ?", (user_id,))
+    uid = resolve_user_pk(conn, user_id)
+    conn.execute("DELETE FROM exams WHERE user_id = ?", (uid,))
     for e in exams:
         conn.execute(
             "INSERT INTO exams (user_id, course_name, exam_time, exam_location, seat_number) "
             "VALUES (?, ?, ?, ?, ?)",
-            (user_id, e["course_name"], e["exam_time"], e["exam_location"], e["seat_number"]),
+            (uid, e["course_name"], e["exam_time"], e["exam_location"], e["seat_number"]),
         )
     conn.commit()
     conn.close()
@@ -357,18 +380,24 @@ def write_change_log(user_id: str, change_type: str, old_val: str, new_val: str,
     conn.close()
 
 
-def load_cookie_pairs(user_id: str) -> list[tuple[str, str]]:
+def load_cookie_pairs(user_id: str) -> list[tuple[str, str, str]]:
     path = cookie_path(user_id)
     if not path.is_file():
         raise RuntimeError("webvpn cookie not found; please login first via bind-interactive")
 
-    pairs: list[tuple[str, str]] = []
+    pairs: list[tuple[str, str, str]] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
+        if not line or line.startswith("#"):
             continue
-        name, value = line.split("=", 1)
-        pairs.append((name, value))
+        if "|" in line:
+            name_value, domain = line.split("|", 1)
+            if "=" in name_value:
+                name, value = name_value.split("=", 1)
+                pairs.append((name, value, domain))
+        elif "=" in line:
+            name, value = line.split("=", 1)
+            pairs.append((name, value, ".njfu.edu.cn"))
     return pairs
 
 
@@ -382,8 +411,13 @@ def fetch_schedule_html_with_browser(user_id: str) -> str:
         raise RuntimeError("selenium is required for schedule sync; run: pip install selenium") from exc
 
     timeout = int(os.environ.get("SCHEDULE_BROWSER_TIMEOUT", "25"))
+    profile_path = chrome_profile_path(user_id)
+    if not profile_path.exists():
+        raise RuntimeError("chrome profile not found; run bind_webvpn_interactive.sh first")
+
     options = Options()
     options.page_load_strategy = "eager"
+    options.add_argument(f"--user-data-dir={profile_path}")
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
@@ -399,16 +433,70 @@ def fetch_schedule_html_with_browser(user_id: str) -> str:
 
     try:
         driver.set_page_load_timeout(timeout)
-        print(json.dumps({"status": "loading_webvpn"}, ensure_ascii=False), file=sys.stderr, flush=True)
+        print(json.dumps({"status": "using_auth_chrome_profile", "profile": str(profile_path)}, ensure_ascii=False), file=sys.stderr, flush=True)
+
+        print(json.dumps({"status": "injecting_cookies_for_cas"}, ensure_ascii=False), file=sys.stderr, flush=True)
+        driver.get("https://uia.njfu.edu.cn/authserver/")
+        time.sleep(1)
+        for name, value, domain in load_cookie_pairs(user_id):
+            if "uia.njfu.edu.cn" in domain:
+                try:
+                    driver.add_cookie({"name": name, "value": value, "domain": domain, "path": "/"})
+                except Exception:
+                    pass
+
+        print(json.dumps({"status": "warming_jwc", "url": JWC_MAIN}, ensure_ascii=False), file=sys.stderr, flush=True)
         try:
-            driver.get("https://webvpn.njfu.edu.cn")
+            driver.get(JWC_MAIN)
         except TimeoutException:
-            pass
+            print(json.dumps({"status": "jwc_load_timeout", "current_url": driver.current_url}, ensure_ascii=False), file=sys.stderr, flush=True)
 
-        for name, value in load_cookie_pairs(user_id):
-            driver.add_cookie({"name": name, "value": value, "domain": "webvpn.njfu.edu.cn", "path": "/"})
+        try:
+            WebDriverWait(driver, timeout * 2).until(
+                lambda d: (
+                    ("jsxsd" in d.current_url or "htmlx" in d.current_url)
+                    and "authserver/login" not in d.current_url
+                    and "rump_frontend/login" not in d.current_url
+                )
+            )
+        except TimeoutException:
+            print(json.dumps({"status": "jwc_warmup_timeout", "current_url": driver.current_url}, ensure_ascii=False), file=sys.stderr, flush=True)
 
-        print(json.dumps({"status": "loading_schedule", "url": SCHEDULE_LIST_URL}, ensure_ascii=False), file=sys.stderr, flush=True)
+        current = driver.current_url
+        print(json.dumps({"status": "jwc_warmup_done", "current_url": current}, ensure_ascii=False), file=sys.stderr, flush=True)
+
+        if "authserver/login" in current:
+            if "casLoginForm" in driver.page_source:
+                raise RuntimeError("webvpn auth expired (CAS login form appeared); run bind_webvpn_interactive.sh again")
+            else:
+                print(json.dumps({"status": "stuck_at_cas_but_no_form", "waiting": "5s"}, ensure_ascii=False), file=sys.stderr, flush=True)
+                time.sleep(5)
+                driver.get(JWC_MAIN)
+                try:
+                    WebDriverWait(driver, timeout).until(
+                        lambda d: ("jsxsd" in d.current_url or "htmlx" in d.current_url)
+                    )
+                except TimeoutException:
+                    if "casLoginForm" in driver.page_source:
+                        raise RuntimeError("webvpn auth expired after retry")
+                print(json.dumps({"status": "jwc_retry_succeeded", "current_url": driver.current_url}, ensure_ascii=False), file=sys.stderr, flush=True)
+
+        if "rump_frontend/login" in driver.current_url:
+            print(json.dumps({"status": "jwc_still_at_webvpn_router", "current_url": driver.current_url}, ensure_ascii=False), file=sys.stderr, flush=True)
+            time.sleep(2)
+            try:
+                driver.get(JWC_MAIN)
+            except TimeoutException:
+                print(json.dumps({"status": "jwc_retry_timeout", "current_url": driver.current_url}, ensure_ascii=False), file=sys.stderr, flush=True)
+
+        if "frontend_static/frontend/login/index.html" in driver.current_url:
+            print(json.dumps({"status": "webvpn_portal_loaded_retrying_jwc"}, ensure_ascii=False), file=sys.stderr, flush=True)
+            try:
+                driver.get(JWC_MAIN)
+            except TimeoutException:
+                print(json.dumps({"status": "jwc_retry_timeout", "current_url": driver.current_url}, ensure_ascii=False), file=sys.stderr, flush=True)
+
+        print(json.dumps({"status": "loading_schedule", "url": SCHEDULE_LIST_URL, "current_url": driver.current_url}, ensure_ascii=False), file=sys.stderr, flush=True)
         try:
             driver.get(SCHEDULE_LIST_URL)
         except TimeoutException:
@@ -419,13 +507,29 @@ def fetch_schedule_html_with_browser(user_id: str) -> str:
                 lambda d: "timetable" in d.page_source
                 or "xskb_print.do" in d.page_source
                 or "authserver/login" in d.current_url
-                or "rump_frontend/login" in d.current_url
             )
         except TimeoutException:
             pass
 
-        if "authserver/login" in driver.current_url or "rump_frontend/login" in driver.current_url:
-            raise RuntimeError("webvpn session expired; run bind_webvpn_interactive.sh again")
+        if "authserver/login" in driver.current_url:
+            raise RuntimeError("schedule page redirected to CAS login; run bind_webvpn_interactive.sh again; current_url=" + driver.current_url)
+
+        if "rump_frontend/login" in driver.current_url:
+            print(json.dumps({"status": "schedule_still_at_webvpn_router_retrying", "current_url": driver.current_url}, ensure_ascii=False), file=sys.stderr, flush=True)
+            try:
+                driver.get(SCHEDULE_LIST_URL)
+            except TimeoutException:
+                print(json.dumps({"status": "schedule_retry_timeout", "current_url": driver.current_url}, ensure_ascii=False), file=sys.stderr, flush=True)
+            try:
+                WebDriverWait(driver, timeout).until(
+                    lambda d: "timetable" in d.page_source
+                    or "xskb_print.do" in d.page_source
+                    or "authserver/login" in d.current_url
+                )
+            except TimeoutException:
+                pass
+            if "authserver/login" in driver.current_url:
+                raise RuntimeError("schedule page redirected to CAS login; run bind_webvpn_interactive.sh again; current_url=" + driver.current_url)
 
         html = driver.page_source
         if "timetable" not in html and "xskb_print.do" not in html:

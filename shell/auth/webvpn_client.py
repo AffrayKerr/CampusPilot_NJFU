@@ -114,7 +114,7 @@ def save_cookies(session: requests.Session, path: Path) -> None:
         domain = cookie.domain or ""
         if "njfu.edu.cn" not in domain:
             continue
-        lines.append(f"{cookie.name}={cookie.value}")
+        lines.append(f"{cookie.name}={cookie.value}|{domain}")
     path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
 
 
@@ -123,12 +123,18 @@ def load_cookies(session: requests.Session, path: Path) -> None:
         return
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
+        if not line or line.startswith("#"):
             continue
-        name, value = line.split("=", 1)
-        session.cookies.set(name, value, domain="webvpn.njfu.edu.cn")
-        session.cookies.set(name, value, domain=".njfu.edu.cn")
-        session.cookies.set(name, value, domain="uia.njfu.edu.cn")
+        if "|" in line:
+            name_value, domain = line.split("|", 1)
+            if "=" in name_value:
+                name, value = name_value.split("=", 1)
+                session.cookies.set(name, value, domain=domain)
+        elif "=" in line:
+            name, value = line.split("=", 1)
+            session.cookies.set(name, value, domain="webvpn.njfu.edu.cn")
+            session.cookies.set(name, value, domain=".njfu.edu.cn")
+            session.cookies.set(name, value, domain="uia.njfu.edu.cn")
 
 
 def open_cas_login_page(session: requests.Session) -> tuple[str, str]:

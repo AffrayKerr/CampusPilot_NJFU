@@ -5,7 +5,7 @@ set -eu
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/env.sh"
 
 shell_db_init() {
-  python - "$DATABASE_PATH" <<'PY'
+  python3 - "$DATABASE_PATH" <<'PY'
 import sqlite3
 import sys
 from pathlib import Path
@@ -21,7 +21,7 @@ PY
 shell_db_query() {
   local sql="$1"
   shift || true
-  python - "$DATABASE_PATH" "$sql" "$@" <<'PY'
+  python3 - "$DATABASE_PATH" "$sql" "$@" <<'PY'
 import json
 import sqlite3
 import sys
@@ -41,7 +41,7 @@ PY
 shell_db_execute() {
   local sql="$1"
   shift || true
-  python - "$DATABASE_PATH" "$sql" "$@" <<'PY'
+  python3 - "$DATABASE_PATH" "$sql" "$@" <<'PY'
 import sqlite3
 import sys
 

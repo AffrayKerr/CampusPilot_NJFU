@@ -45,14 +45,25 @@ def project_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def cookie_path(user_id: str) -> Path:
+def user_runtime_dir(user_id: str) -> Path:
     runtime_dir = project_root() / "runtime" / "users" / user_id
     runtime_dir.mkdir(parents=True, exist_ok=True)
-    return runtime_dir / "webvpn.cookie"
+    return runtime_dir
 
 
-def setup_driver() -> webdriver.Chrome:
+def cookie_path(user_id: str) -> Path:
+    return user_runtime_dir(user_id) / "webvpn.cookie"
+
+
+def chrome_profile_path(user_id: str) -> Path:
+    path = user_runtime_dir(user_id) / "chrome_profile"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def setup_driver(user_id: str) -> webdriver.Chrome:
     options = Options()
+    options.add_argument(f"--user-data-dir={chrome_profile_path(user_id)}")
     options.add_argument("--start-maximized")
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
@@ -85,20 +96,25 @@ def warmup_jwc_session(driver: webdriver.Chrome) -> None:
     """Navigate to JWC through WebVPN so browser completes SSO and establishes JWC session cookies."""
     driver.get(JWC_MAIN_URL)
     try:
-        WebDriverWait(driver, 30).until(
-            lambda d: "jsxsd" in d.current_url and "uia.njfu.edu.cn" not in d.current_url
+        WebDriverWait(driver, 60).until(
+            lambda d: (
+                ("jsxsd" in d.current_url or "htmlx" in d.current_url)
+                and "uia.njfu.edu.cn" not in d.current_url
+                and "authserver/login" not in d.current_url
+            )
         )
     except TimeoutException:
         pass
-    time.sleep(1)
+    time.sleep(2)
 
 
 def extract_cookies(driver: webdriver.Chrome) -> list[dict[str, str]]:
     all_cookies = driver.get_cookies()
+    target_domains = ("njfu.edu.cn",)
     njfu_cookies = []
     for cookie in all_cookies:
         domain = cookie.get("domain", "")
-        if "njfu.edu.cn" in domain:
+        if any(d in domain for d in target_domains):
             njfu_cookies.append({
                 "name": cookie["name"],
                 "value": cookie["value"],
@@ -108,7 +124,10 @@ def extract_cookies(driver: webdriver.Chrome) -> list[dict[str, str]]:
 
 
 def save_cookies(cookies: list[dict[str, str]], path: Path) -> None:
-    lines = [f"{c['name']}={c['value']}" for c in cookies]
+    lines = []
+    for c in cookies:
+        domain = c.get("domain", "")
+        lines.append(f"{c['name']}={c['value']}|{domain}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -119,7 +138,7 @@ def main() -> None:
     user_id = sys.argv[1]
     cookie_file = cookie_path(user_id)
 
-    driver = setup_driver()
+    driver = setup_driver(user_id)
 
     try:
         driver.get(WEBVPN_BASE)
@@ -148,6 +167,7 @@ def main() -> None:
         emit(True, "interactive login completed", {
             "cookie_count": len(cookies),
             "cookie_file": str(cookie_file),
+            "chrome_profile": str(chrome_profile_path(user_id)),
             "final_url": driver.current_url,
         }, 0)
 
