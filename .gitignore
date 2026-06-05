@@ -1,35 +1,66 @@
-# Python cache
+# ── Python ──────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
 .pytest_cache/
+*.egg-info/
+dist/
+build/
 
-# Virtual environments
+# ── Virtual environments ─────────────────────────────────────────────────────
 .venv/
 venv/
 env/
 
-# Flask
+# ── Flask / web ──────────────────────────────────────────────────────────────
 instance/
 .webassets-cache
 
-# Runtime database files
+# ── Database ─────────────────────────────────────────────────────────────────
+# Keep schema.sql and migrations, ignore actual DB files
 database/*.db
 database/*.sqlite
 database/*.sqlite3
+database/*.db-shm
+database/*.db-wal
 
-# Logs
-logs/*.log
+# ── Runtime directory (all generated at runtime, never commit) ───────────────
+runtime/
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+logs/
 *.log
 
-# Cookies and sensitive config
-cookies/*
-config/user.conf
+# ── Sensitive credentials & cookies ─────────────────────────────────────────
+# Cookie files contain live session tokens
+*.cookie
+# SMTP / email credentials
 config/mail.conf
+config/user.conf
+# Encrypted campus password stored here, do not commit
+config/*.secret
 
-# OS and editor
+# ── Chrome profile (Selenium creates this at runtime, can be huge) ───────────
+runtime/users/*/chrome_profile/
+
+# ── Environment / secrets ────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── OS & editor ─────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+desktop.ini
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
+
+# ── Test / coverage artifacts ────────────────────────────────────────────────
+.coverage
+htmlcov/
+coverage.xml
+*.cover
