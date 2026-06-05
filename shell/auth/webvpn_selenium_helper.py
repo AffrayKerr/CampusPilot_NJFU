@@ -131,6 +131,36 @@ def save_cookies(cookies: list[dict[str, str]], path: Path) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def update_database(user_id: str, cookie_file: Path) -> None:
+    import os
+    import sqlite3 as _sqlite3
+    env_path = os.environ.get("DATABASE_PATH")
+    if env_path:
+        db_path = env_path
+    else:
+        db_path = str(Path(__file__).resolve().parents[2] / "database" / "campus_pilot.db")
+
+    conn = _sqlite3.connect(db_path)
+    conn.execute(
+        """
+        UPDATE campus_accounts
+        SET webvpn_cookie_path = ?, session_valid = 1,
+            last_login_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ?
+        """,
+        (str(cookie_file), user_id),
+    )
+    conn.execute(
+        """
+        INSERT INTO sessions (user_id, session_type, cookie_path, is_valid, last_checked_at)
+        VALUES (?, 'webvpn', ?, 1, CURRENT_TIMESTAMP)
+        """,
+        (user_id, str(cookie_file)),
+    )
+    conn.commit()
+    conn.close()
+
+
 def main() -> None:
     if len(sys.argv) < 2:
         emit(False, "user_id is required", None, 1)
@@ -163,6 +193,7 @@ def main() -> None:
             emit(False, "no cookies found after login", None, 1)
 
         save_cookies(cookies, cookie_file)
+        update_database(user_id, cookie_file)
 
         emit(True, "interactive login completed", {
             "cookie_count": len(cookies),

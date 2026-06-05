@@ -113,38 +113,68 @@ python backend\scripts\create_admin.py --username admin --password Admin123456 -
 | GET | `/ping` | 无 | - |
 | POST | `/login` | 登录+绑定 | `shell/auth/login_bound.sh user_id` |
 | POST | `/bind-interactive` | 登录+绑定 | `shell/auth/bind_webvpn_interactive.sh user_id` |
+| GET | `/interactive-status` | 登录+绑定 | 轮询交互式登录进度 |
 | GET | `/status` | 登录+绑定 | `shell/auth/check_session.sh user_id` |
 | POST | `/refresh` | 登录+绑定 | `shell/auth/refresh_session.sh user_id` |
 | POST | `/logout` | 登录+绑定 | `shell/auth/logout.sh user_id` |
 
-### 4.1 交互式登录 `/bind-interactive`
+### 4.1 交互式登录流程
 
-**功能：** 启动本地浏览器，用户手动完成 WebVPN 登录，系统自动提取 cookie。
+WebVPN 登录必须通过交互式方式完成（学校 CAS 有验证码保护，不支持纯自动登录）。前端推荐使用以下两步流程：
+
+**第一步：** `POST /bind-interactive` — 后台启动浏览器，立即返回
 
 **请求：** 无需 body
 
-**响应：**
+**响应（立即返回，不等待用户完成登录）：**
 
 ```json
 {
   "success": true,
-  "message": "interactive login completed",
-  "data": {
-    "cookie_count": 2,
-    "cookie_file": "D:\\...\\webvpn.cookie",
-    "final_url": "https://webvpn.njfu.edu.cn/frontend_static/frontend/login/index.html#/"
-  }
+  "message": "Browser opened, please complete login in the browser window",
+  "data": { "status": "in_progress", "pid": 12345 }
+}
+```
+
+**第二步：** 前端轮询 `GET /interactive-status`，检查登录是否完成
+
+登录进行中：
+
+```json
+{
+  "success": true,
+  "message": "Browser login in progress, please complete login in the browser window",
+  "data": { "status": "in_progress" }
+}
+```
+
+登录成功：
+
+```json
+{
+  "success": true,
+  "message": "执行成功",
+  "data": { "status": "completed", "session_valid": 1, ... }
+}
+```
+
+登录失败：
+
+```json
+{
+  "success": false,
+  "message": "interactive login failed",
+  "data": { "status": "failed" }
 }
 ```
 
 **说明：**
 
-- 使用 Selenium 启动浏览器自动打开 `https://webvpn.njfu.edu.cn`
-- 用户在浏览器中手动完成登录（可解决验证码问题）
-- 系统自动检测登录成功并提取 cookie
-- Cookie 自动保存到 `runtime/users/<user_id>/webvpn.cookie`
-- 超时时间：600 秒（10 分钟）
-- 依赖：需要安装 `selenium` 和 Chrome 浏览器
+- 使用 Selenium 在后台启动 Chrome，自动打开 `https://webvpn.njfu.edu.cn`
+- 用户在弹出的浏览器窗口中手动完成登录（支持验证码）
+- 登录成功后系统自动提取 cookie，保存到 `runtime/users/<user_id>/webvpn.cookie`
+- 前端建议每 3 秒轮询一次 `/interactive-status`，最多等待 600 秒
+- 依赖：需要安装 `selenium` 和 Chrome 浏览器，程序须运行在本机（非远程服务器）
 
 ## 5. 日程与 DDL
 
