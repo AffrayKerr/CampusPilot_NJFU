@@ -27,11 +27,28 @@ fi
 
 shell_db_init
 
-shell_db_execute \
-  "INSERT INTO tasks (user_id, title, deadline, priority, category, repeat_rule, reminder_time, note, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')" \
-  "$user_id" "$title" "$deadline" "$priority" "$category" "$repeat_rule" "$reminder_time" "$note"
+uid_json="$(shell_db_query "SELECT id FROM users WHERE username = ? OR CAST(id AS TEXT) = ?" "$user_id" "$user_id")"
+if [[ "$uid_json" == "[]" ]]; then
+  shell_response_json false "user not found" null
+  exit 1
+fi
 
-task_id="$(shell_db_query "SELECT last_insert_rowid() as id" | python -c "import json, sys; print(json.load(sys.stdin)[0]['id'])")"
+uid="$(echo "$uid_json" | python -c "import json, sys; d = json.load(sys.stdin); print(d[0]['id'] if d else '')")"
+
+task_id="$(python - "$DATABASE_PATH" "$uid" "$title" "$deadline" "$priority" "$category" "$repeat_rule" "$reminder_time" "$note" <<'PY'
+import sqlite3, sys
+conn = sqlite3.connect(sys.argv[1])
+conn.execute("PRAGMA foreign_keys = ON;")
+cur = conn.execute(
+    "INSERT INTO tasks (user_id, title, deadline, priority, category, repeat_rule, reminder_time, note, status)"
+    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')",
+    sys.argv[2:]
+)
+conn.commit()
+print(cur.lastrowid)
+conn.close()
+PY
+)"
 
 shell_log_write INFO schedule "task added" "user_id=$user_id task_id=$task_id title=$title" "$user_id"
 
