@@ -26,6 +26,9 @@ shell_db_init
 
 if ! result_json="$("$AUTH_PYTHON" "$SCRIPT_DIR/webvpn_client.py" check "$user_id" 2>&1)"; then
   shell_log_write WARNING auth "webvpn session invalid" "user_id=$user_id result=$result_json" "$user_id"
+  if [[ -z "$result_json" || "$result_json" != *'"success"'* ]]; then
+    result_json="$(shell_response_json false "session check failed" null)"
+  fi
   printf '%s\n' "$result_json"
   exit 1
 fi

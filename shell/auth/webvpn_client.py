@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""aTrust WebVPN login helper for CampusPilot shell auth scripts."""
+"""WebVPN login helper for CampusPilot shell auth scripts."""
 
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ import os
 import random
 import re
 import sqlite3
-import sys
 import urllib3
 from pathlib import Path
 from typing import Any
@@ -23,8 +22,9 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-VPN_BASE = "https://vpn.njfu.edu.cn"
+WEBVPN_BASE = "https://webvpn.njfu.edu.cn"
 CAS_HOST = "uia.njfu.edu.cn"
+CAS_LOGIN_URL = f"https://{CAS_HOST}/authserver/login"
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -69,9 +69,16 @@ def new_session() -> requests.Session:
     session.headers.update(
         {
             "User-Agent": USER_AGENT,
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "zh-CN,zh;q=0.9",
-            "Referer": f"{VPN_BASE}/portal/",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0",
         }
     )
     session.verify = False
@@ -119,38 +126,20 @@ def load_cookies(session: requests.Session, path: Path) -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         name, value = line.split("=", 1)
-        session.cookies.set(name, value, domain="vpn.njfu.edu.cn")
+        session.cookies.set(name, value, domain="webvpn.njfu.edu.cn")
         session.cookies.set(name, value, domain=".njfu.edu.cn")
-
-
-def fetch_auth_config(session: requests.Session) -> dict[str, Any]:
-    response = session.get(
-        f"{VPN_BASE}/passport/v1/public/authConfig",
-        params={"needTicket": "1"},
-        timeout=20,
-    )
-    response.raise_for_status()
-    payload = response.json()
-    if payload.get("code") not in (0, None):
-        raise RuntimeError(payload.get("message") or "authConfig failed")
-    data = payload.get("data") or {}
-    csrf = (data.get("security") or {}).get("csrfToken")
-    if csrf:
-        session.headers["x-csrf-token"] = csrf
-    return data
+        session.cookies.set(name, value, domain="uia.njfu.edu.cn")
 
 
 def open_cas_login_page(session: requests.Session) -> tuple[str, str]:
-    response = session.get(
-        f"{VPN_BASE}/passport/v1/public/casLogin",
-        params={"sfDomain": "cas"},
-        timeout=30,
-        allow_redirects=True,
-    )
+    from urllib.parse import quote
+    service = quote(WEBVPN_BASE + "/", safe="")
+    url = f"{CAS_LOGIN_URL}?service={service}"
+    response = session.get(url, timeout=30, allow_redirects=True)
     response.raise_for_status()
     final_url = response.url
     if CAS_HOST not in urlparse(final_url).netloc:
-        raise RuntimeError(f"unexpected cas redirect: {final_url}")
+        raise RuntimeError(f"expected CAS login page, got: {final_url}")
     return final_url, response.text
 
 
@@ -187,39 +176,39 @@ def submit_cas_login(
     response = session.post(post_url, data=post_data, timeout=40, allow_redirects=True)
     response.raise_for_status()
     session.headers.pop("Content-Type", None)
-    session.headers["Referer"] = f"{VPN_BASE}/portal/"
     return response
 
 
 def session_is_online(session: requests.Session) -> tuple[bool, dict[str, Any]]:
     details: dict[str, Any] = {}
     try:
-        fetch_auth_config(session)
-    except Exception as exc:
-        details["auth_config_error"] = str(exc)
-        return False, details
+        response = session.get(WEBVPN_BASE, timeout=20, allow_redirects=True)
+        details["status_code"] = response.status_code
+        details["final_url"] = response.url
 
-    response = session.get(f"{VPN_BASE}/passport/v1/user/onlineInfo", timeout=20)
-    details["online_status_code"] = response.status_code
-    if response.headers.get("Content-Type", "").startswith("application/json"):
-        payload = response.json()
-        details["online_payload"] = payload
-        data = payload.get("data") or {}
-        if payload.get("code") == 0 and data.get("isOnline") in (True, 1, "1"):
+        if CAS_HOST in urlparse(response.url).netloc:
+            details["reason"] = "redirected to CAS login page"
+            return False, details
+
+        if "统一身份认证" in response.text and "casLoginForm" in response.text:
+            details["reason"] = "CAS login form detected"
+            return False, details
+
+        # rump_frontend/login 是 webvpn 的 SSO 入口跳转页，到达此页说明 SSO 未完成
+        if "rump_frontend/login" in response.url:
+            details["reason"] = "webvpn login page, SSO not completed"
+            return False, details
+
+        # frontend_static/frontend/login/index.html#/ 是登录后的资源门户 SPA
+        if WEBVPN_BASE in response.url and response.status_code == 200:
+            details["reason"] = "webvpn accessible"
             return True, details
 
-    portal = session.get(f"{VPN_BASE}/portal/", timeout=20, allow_redirects=True)
-    details["portal_status_code"] = portal.status_code
-    details["portal_final_url"] = portal.url
-    if portal.status_code >= 400:
+        details["reason"] = "unexpected state"
         return False, details
-    if CAS_HOST in urlparse(portal.url).netloc:
+    except Exception as exc:
+        details["error"] = str(exc)
         return False, details
-    if "统一身份认证" in portal.text and "casLoginForm" in portal.text:
-        return False, details
-    if VPN_BASE in portal.url and "portal" in portal.url:
-        return True, details
-    return False, details
 
 
 def decode_bound_password(raw: str) -> str:
@@ -307,17 +296,20 @@ def mark_session_invalid(user_id: str) -> None:
 def cmd_login(user_id: str, username: str | None, password: str | None) -> None:
     account, plain_password = load_account(user_id, username, password)
     session = new_session()
-    session.get(f"{VPN_BASE}/portal/", timeout=20)
-    fetch_auth_config(session)
+    
     login_url, login_html = open_cas_login_page(session)
+    
+    if CAS_HOST not in urlparse(login_url).netloc:
+        raise RuntimeError(f"expected CAS login page, got: {login_url}")
+    
     post_resp = submit_cas_login(session, login_url, login_html, account, plain_password)
-
+    
     online, details = session_is_online(session)
     if not online:
         if CAS_HOST in urlparse(post_resp.url).netloc:
             raise RuntimeError("CAS login rejected; still on authentication page")
         raise RuntimeError(f"webvpn login finished but session is offline: {details}")
-
+    
     cookie_file = cookie_path(user_id)
     save_cookies(session, cookie_file)
     data = persist_login_state(user_id, cookie_file)
@@ -335,14 +327,14 @@ def cmd_check(user_id: str) -> None:
     if not path.is_file():
         mark_session_invalid(user_id)
         emit(False, "session cookie not found", None, 1)
-
+    
     session = new_session()
     load_cookies(session, path)
     online, details = session_is_online(session)
     if not online:
         mark_session_invalid(user_id)
         emit(False, "session invalid", details, 1)
-
+    
     conn = db_connect()
     conn.execute(
         """
@@ -369,20 +361,9 @@ def cmd_check(user_id: str) -> None:
 
 def cmd_logout(user_id: str) -> None:
     path = cookie_path(user_id)
-    session = new_session()
     if path.is_file():
-        load_cookies(session, path)
-        try:
-            fetch_auth_config(session)
-            session.post(
-                f"{VPN_BASE}/passport/v1/user/logout",
-                params={"rnd": str(int(random.random() * 1_000_000_000))},
-                timeout=20,
-            )
-        except Exception:
-            pass
         path.unlink(missing_ok=True)
-
+    
     mark_session_invalid(user_id)
     conn = db_connect()
     conn.execute(
@@ -405,7 +386,7 @@ def main() -> None:
     parser.add_argument("username", nargs="?", default=None)
     parser.add_argument("password", nargs="?", default=None)
     args = parser.parse_args()
-
+    
     try:
         if args.action == "login":
             cmd_login(args.user_id, args.username, args.password)
