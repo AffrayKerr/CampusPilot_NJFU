@@ -86,11 +86,18 @@ def load_session(user_id: str) -> requests.Session:
 
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
+        if not line or line.startswith("#"):
             continue
-        name, value = line.split("=", 1)
-        session.cookies.set(name, value, domain="webvpn.njfu.edu.cn")
-        session.cookies.set(name, value, domain=".njfu.edu.cn")
+        if "|" in line:
+            name_value, domain = line.split("|", 1)[0], line.split("|", 1)[1].split("|")[0]
+            if "=" not in name_value:
+                continue
+            name, value = name_value.split("=", 1)
+            session.cookies.set(name, value, domain=domain)
+        elif "=" in line:
+            name, value = line.split("=", 1)
+            session.cookies.set(name, value, domain="webvpn.njfu.edu.cn")
+            session.cookies.set(name, value, domain=".njfu.edu.cn")
 
     # Visit JWC main page first to establish JWC internal session via WebVPN SSO
     session.get(JWC_MAIN, timeout=30, allow_redirects=True)
@@ -410,7 +417,7 @@ def fetch_schedule_html_with_browser(user_id: str) -> str:
     except ImportError as exc:
         raise RuntimeError("selenium is required for schedule sync; run: pip install selenium") from exc
 
-    timeout = int(os.environ.get("SCHEDULE_BROWSER_TIMEOUT", "25"))
+    timeout = int(os.environ.get("SCHEDULE_BROWSER_TIMEOUT", "60"))
     profile_path = chrome_profile_path(user_id)
     if not profile_path.exists():
         raise RuntimeError("chrome profile not found; run bind_webvpn_interactive.sh first")
@@ -424,6 +431,10 @@ def fetch_schedule_html_with_browser(user_id: str) -> str:
     options.add_argument("--disable-gpu")
     if os.environ.get("SCHEDULE_HEADLESS", "0") == "1":
         options.add_argument("--headless=new")
+    else:
+        # Move window off-screen so it's invisible to the user
+        options.add_argument("--window-position=-2400,-2400")
+        options.add_argument("--window-size=1280,800")
 
     print(json.dumps({"status": "starting_browser"}, ensure_ascii=False), file=sys.stderr, flush=True)
     try:
@@ -434,16 +445,6 @@ def fetch_schedule_html_with_browser(user_id: str) -> str:
     try:
         driver.set_page_load_timeout(timeout)
         print(json.dumps({"status": "using_auth_chrome_profile", "profile": str(profile_path)}, ensure_ascii=False), file=sys.stderr, flush=True)
-
-        print(json.dumps({"status": "injecting_cookies_for_cas"}, ensure_ascii=False), file=sys.stderr, flush=True)
-        driver.get("https://uia.njfu.edu.cn/authserver/")
-        time.sleep(1)
-        for name, value, domain in load_cookie_pairs(user_id):
-            if "uia.njfu.edu.cn" in domain:
-                try:
-                    driver.add_cookie({"name": name, "value": value, "domain": domain, "path": "/"})
-                except Exception:
-                    pass
 
         print(json.dumps({"status": "warming_jwc", "url": JWC_MAIN}, ensure_ascii=False), file=sys.stderr, flush=True)
         try:
@@ -576,6 +577,25 @@ def cmd_detect_changes(user_id: str) -> None:
 
 
 def cmd_sync_schedule(user_id: str) -> None:
+    # Try requests first (faster, no browser popup)
+    try:
+        session = load_session(user_id)
+        html, params = fetch_schedule_html(session)
+        
+        # If timetable found in HTML, use it
+        if "timetable" in html or "kbcontent" in html:
+            courses = parse_schedule(html)
+            if courses:
+                save_schedules(user_id, courses)
+                emit(True, f"synced {len(courses)} courses", {"count": len(courses), "source": "requests"})
+            # If parse failed but HTML looks valid, fall back to browser
+        
+        # If timetable not found, fall back to browser
+        print(json.dumps({"status": "requests_no_timetable_fallback_to_browser"}, ensure_ascii=False), file=sys.stderr)
+    except Exception as e:
+        print(json.dumps({"status": "requests_failed", "error": str(e), "fallback_to_browser": True}, ensure_ascii=False), file=sys.stderr)
+    
+    # Fallback: use browser (slower but more reliable)
     html = fetch_schedule_html_with_browser(user_id)
     courses = parse_schedule(html)
     save_schedules(user_id, courses)

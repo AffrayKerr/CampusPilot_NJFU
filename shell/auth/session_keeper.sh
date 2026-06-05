@@ -38,6 +38,7 @@ if [[ "$bound_json" == "[]" ]]; then
   exit 1
 fi
 
+# Step 1: Check if session is still valid
 check_result="$("$AUTH_PYTHON" "$SCRIPT_DIR/webvpn_client.py" check "$user_id" 2>&1 || true)"
 if [[ "$check_result" == *'"success": true'* || "$check_result" == *'"success":true'* ]]; then
   rm -f "$needs_relogin_flag"
@@ -46,7 +47,22 @@ if [[ "$check_result" == *'"success": true'* || "$check_result" == *'"success":t
   exit 0
 fi
 
-shell_log_write WARNING auth "session keeper: session expired, interactive login required" "user_id=$user_id" "$user_id"
+shell_log_write WARNING auth "session keeper: session expired, attempting silent relogin" "user_id=$user_id" "$user_id"
+
+# Step 2: Try silent relogin using saved campus credentials
+login_result="$("$AUTH_PYTHON" "$SCRIPT_DIR/webvpn_client.py" login "$user_id" 2>&1 || true)"
+if [[ "$login_result" == *'"success": true'* || "$login_result" == *'"success":true'* ]]; then
+  rm -f "$needs_relogin_flag"
+  shell_db_execute \
+    "UPDATE campus_accounts SET session_valid = 1, last_login_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?" \
+    "$user_id"
+  shell_log_write INFO auth "session keeper: silent relogin succeeded" "user_id=$user_id" "$user_id"
+  shell_response_json true "Session renewed silently" '{"status": "renewed"}'
+  exit 0
+fi
+
+# Step 3: Silent relogin failed (likely captcha) — flag for interactive relogin
+shell_log_write WARNING auth "session keeper: silent relogin failed, user interaction required" "user_id=$user_id" "$user_id"
 
 echo "$(date -Iseconds 2>/dev/null || date)" > "$needs_relogin_flag"
 
@@ -58,9 +74,9 @@ notify_dir="$SCRIPT_DIR/../notification"
 if [[ -f "$notify_dir/notify_desktop.sh" ]]; then
   bash "$notify_dir/notify_desktop.sh" "$user_id" \
     "WebVPN 需要重新登录" \
-    "请在 CampusPilot 个人中心重新进行交互式登录（浏览器登录）。" 2>/dev/null || true
+    "自动续期失败，请在 CampusPilot 个人中心重新进行交互式登录（浏览器登录）。" 2>/dev/null || true
 fi
 
-shell_response_json false "Session expired, interactive relogin required" \
+shell_response_json false "Session expired and silent relogin failed; interactive relogin required" \
   '{"status": "needs_relogin", "action": "run_interactive_login"}'
 exit 1

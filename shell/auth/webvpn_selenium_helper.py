@@ -109,17 +109,37 @@ def warmup_jwc_session(driver: webdriver.Chrome) -> None:
 
 
 def extract_cookies(driver: webdriver.Chrome) -> list[dict[str, str]]:
-    all_cookies = driver.get_cookies()
-    target_domains = ("njfu.edu.cn",)
+    # Use CDP to get ALL cookies across all domains/paths (more complete than driver.get_cookies())
+    try:
+        result = driver.execute_cdp_cmd("Network.getAllCookies", {})
+        all_cookies = result.get("cookies", [])
+    except Exception:
+        all_cookies = driver.get_cookies()
+
     njfu_cookies = []
-    for cookie in all_cookies:
-        domain = cookie.get("domain", "")
-        if any(d in domain for d in target_domains):
-            njfu_cookies.append({
-                "name": cookie["name"],
-                "value": cookie["value"],
-                "domain": domain,
-            })
+    seen = set()
+    for c in all_cookies:
+        domain = c.get("domain", "")
+        name = c.get("name", "")
+        if "njfu.edu.cn" not in domain:
+            continue
+        key = (name, domain, c.get("path", "/"))
+        if key in seen:
+            continue
+        seen.add(key)
+        njfu_cookies.append({
+            "name": name,
+            "value": c.get("value", ""),
+            "domain": domain,
+            "path": c.get("path", "/"),
+        })
+
+    print(json.dumps({
+        "status": "cookies_extracted",
+        "count": len(njfu_cookies),
+        "names": [c["name"] for c in njfu_cookies],
+    }, ensure_ascii=False), file=sys.stderr)
+
     return njfu_cookies
 
 
@@ -127,7 +147,8 @@ def save_cookies(cookies: list[dict[str, str]], path: Path) -> None:
     lines = []
     for c in cookies:
         domain = c.get("domain", "")
-        lines.append(f"{c['name']}={c['value']}|{domain}")
+        cookie_path = c.get("path", "/")
+        lines.append(f"{c['name']}={c['value']}|{domain}|{cookie_path}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 

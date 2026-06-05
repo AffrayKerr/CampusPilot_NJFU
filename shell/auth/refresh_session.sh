@@ -32,7 +32,16 @@ if [[ "$check_result" == *'"success": true'* || "$check_result" == *'"success":t
   exit 0
 fi
 
-shell_log_write WARNING auth "webvpn session expired, interactive login required" "user_id=$user_id" "$user_id"
+shell_log_write WARNING auth "webvpn session expired, attempting silent relogin" "user_id=$user_id" "$user_id"
+
+login_result="$("$AUTH_PYTHON" "$SCRIPT_DIR/webvpn_client.py" login "$user_id" 2>&1 || true)"
+if [[ "$login_result" == *'"success": true'* || "$login_result" == *'"success":true'* ]]; then
+  shell_log_write INFO auth "webvpn session refreshed by silent relogin" "user_id=$user_id" "$user_id"
+  printf '%s\n' "$login_result"
+  exit 0
+fi
+
+shell_log_write WARNING auth "webvpn session refresh failed; interactive login required" "user_id=$user_id" "$user_id"
 shell_response_json false "WebVPN session has expired. Please run bind_webvpn_interactive.sh to re-login." \
   '{"action": "interactive_login_required", "command": "bind_webvpn_interactive.sh"}'
 exit 1
