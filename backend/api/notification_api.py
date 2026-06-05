@@ -228,3 +228,14 @@ def send_desktop():
         timeout=20,
     )
     return jsonify(result)
+
+
+@notification_bp.route("/daily-summary", methods=["POST"])
+@login_required
+def daily_summary():
+    result = run_shell(
+        "shell/notification/daily_summary.sh",
+        [g.current_user["id"]],
+        timeout=30,
+    )
+    return jsonify(result)

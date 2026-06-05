@@ -39,7 +39,7 @@ uid="$(echo "$uid_json" | "$AUTH_PYTHON" -c "import json, sys; d = json.load(sys
 
 shell_log_write INFO user "importing user config" "user_id=$user_id import_path=$import_path" "$user_id"
 
-result_json="$("$AUTH_PYTHON" - "$DATABASE_PATH" "$uid" "$import_path" <<'PY'
+result_json="$("$AUTH_PYTHON" - "$DATABASE_PATH" "$uid" "$import_path" <<'PY' || true
 import json
 import sqlite3
 import sys
