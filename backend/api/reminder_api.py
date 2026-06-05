@@ -234,3 +234,14 @@ def apply_default_reminders():
             created_count += 1
 
     return success_response("Default reminders applied", {"created_count": created_count})
+
+
+@reminder_bp.route("/trigger", methods=["POST"])
+@login_required
+def trigger_reminder_check():
+    from flask import jsonify
+
+    from services.shell_runner import run_shell
+
+    result = run_shell("shell/schedule/reminder_worker.sh", [g.current_user["id"]], timeout=30)
+    return jsonify(result)

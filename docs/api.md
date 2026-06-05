@@ -220,6 +220,7 @@ python backend\scripts\create_admin.py --username admin --password Admin123456 -
 | POST | `/update` | 登录 | 更新提醒 |
 | POST | `/delete` | 登录 | 删除提醒 |
 | POST | `/defaults/apply` | 登录 | 给已有课程/考试/DDL 应用默认提醒 |
+| POST | `/trigger` | 登录 | 手动触发一次提醒检查 |
 
 添加提醒：
 
