@@ -43,3 +43,14 @@ def refresh():
 def logout():
     result = run_shell("shell/auth/logout.sh", [g.current_user["id"]], timeout=30)
     return jsonify(result)
+
+
+@auth_bp.route("/bind-interactive", methods=["POST"])
+@campus_account_required
+def bind_interactive():
+    result = run_shell(
+        "shell/auth/bind_webvpn_interactive.sh",
+        [g.current_user["id"]],
+        timeout=600,
+    )
+    return jsonify(result)
