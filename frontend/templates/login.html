@@ -1,0 +1,87 @@
+
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>用户登录</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body style="
+    background-image: url('bg.jpg');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    min-height: 100vh;
+    margin: 0;
+">
+
+<!-- 导航栏（最新美化版） -->
+<nav class="px-4" style="background: linear-gradient(to bottom, #165DFF, #90caf9); height: 80px;">
+    <div class="d-flex justify-content-between align-items-center h-100">
+        <a href="dashboard.html" class="text-white text-decoration-none fs-2 fw-bold">校园服务平台</a>
+        <div class="d-flex gap-4">
+            <a href="login.html" class="nav-link-style">登录</a>
+            <a href="dashboard.html" class="nav-link-style">首页</a>
+            <a href="schedule.html" class="nav-link-style">课表</a>
+            <a href="tasks.html" class="nav-link-style">DDL任务</a>
+            <a href="seat.html" class="nav-link-style">座位预约</a>
+            <a href="logs.html" class="nav-link-style">操作日志</a>
+            <a href="profile.html" class="nav-link-style">个人中心</a>
+            <a href="feedback.html" class="nav-link-style">意见反馈</a>
+        </div>
+    </div>
+</nav>
+
+<style>
+.nav-link-style {
+    color: #ffffff;
+    text-decoration: none;
+    padding: 10px 16px;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    font-weight: 500;
+    font-size: 15px;
+}
+.nav-link-style:hover {
+    background-color: #0D47A1;
+    color: white !important;
+}
+
+/* 让登录框绝对居中 */
+.login-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(100vh - 80px);
+}
+</style>
+
+<!-- 登录框：变大 + 居中 + 3个输入框 -->
+<div class="login-container">
+    <div class="card p-5 shadow-lg" style="width: 520px; background: rgba(255,255,255,0.92);">
+        <h2 class="text-center mb-4">账号登录</h2>
+        
+        <div class="mb-4">
+            <label class="form-label fs-5">校园网账号</label>
+            <input type="text" class="form-control form-control-lg" placeholder="请输入校园网账号">
+        </div>
+
+        <div class="mb-4">
+            <label class="form-label fs-5">邮箱</label>
+            <input type="email" class="form-control form-control-lg" placeholder="请输入邮箱">
+        </div>
+
+        <div class="mb-4">
+            <label class="form-label fs-5">密码</label>
+            <input type="password" class="form-control form-control-lg" placeholder="请输入密码">
+        </div>
+
+        <button class="btn btn-primary w-100 py-3 fs-5" onclick="alert('登录成功！')">立即登录</button>
+    </div>
+</div>
+<script type="module" src="../static/js/login.js"></script>
+
+</body>
+</html>
