@@ -2,19 +2,13 @@
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=runtime.sh
 source "$SCRIPT_DIR/runtime.sh"
 AUTH_PYTHON="$(shell_auth_python)"
 SELENIUM_PYTHON="$(shell_selenium_python)"
-# shellcheck source=../common/env.sh
 source "$SCRIPT_DIR/../common/env.sh"
-# shellcheck source=../common/response.sh
 source "$SCRIPT_DIR/../common/response.sh"
-# shellcheck source=../common/log.sh
 source "$SCRIPT_DIR/../common/log.sh"
-# shellcheck source=../common/db.sh
 source "$SCRIPT_DIR/../common/db.sh"
-# shellcheck source=../common/cookie.sh
 source "$SCRIPT_DIR/../common/cookie.sh"
 
 user_id="${1:-}"
@@ -32,11 +26,11 @@ if [[ "$bound_account_json" == "[]" ]]; then
   shell_response_json false "campus account is not bound" null
   exit 1
 fi
+
 pid_file="$user_dir/selenium_login.pid"
 status_file="$user_dir/selenium_login.status"
 log_file="$user_dir/selenium_login.log"
 
-# If a previous login process is still running, return its status
 if [[ -f "$pid_file" ]]; then
   old_pid="$(cat "$pid_file" 2>/dev/null || echo '')"
   if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null; then
@@ -47,18 +41,28 @@ if [[ -f "$pid_file" ]]; then
   rm -f "$pid_file"
 fi
 
-# Clean up previous status
 rm -f "$status_file" "$log_file"
 echo "starting" > "$status_file"
 
 script_path="$SCRIPT_DIR/webvpn_selenium_helper.py"
-if [[ "$SELENIUM_PYTHON" == *.exe ]]; then
+log_file_arg="$log_file"
+
+# Convert Unix-style paths to Windows format for Windows .exe
+if [[ "$SELENIUM_PYTHON" == *.exe ]] && command -v cygpath >/dev/null 2>&1; then
+  SELENIUM_PYTHON="$(cygpath -w "$SELENIUM_PYTHON")"
+  script_path="$(cygpath -w "$script_path")"
+  log_file_arg="$(cygpath -w "$log_file")"
+elif [[ "$SELENIUM_PYTHON" == *.exe ]] && grep -qi microsoft /proc/version 2>/dev/null && command -v wslpath >/dev/null 2>&1; then
+  SELENIUM_PYTHON="$(wslpath -w "$SELENIUM_PYTHON")"
   script_path="$(wslpath -w "$script_path")"
+  log_file_arg="$(wslpath -w "$log_file")"
 fi
 
-# Launch Selenium in background, write result to status_file when done
+DB_PATH="$DATABASE_PATH"
+
 (
-  if result="$("$SELENIUM_PYTHON" "$script_path" "$user_id" 2>"$log_file")"; then
+  export DATABASE_PATH="$DB_PATH"
+  if result="$("$SELENIUM_PYTHON" "$script_path" "$user_id" 2>"$log_file_arg")"; then
     echo "$result" > "$status_file"
     "$AUTH_PYTHON" "$SCRIPT_DIR/webvpn_client.py" check "$user_id" >/dev/null 2>&1 || true
   else
@@ -70,6 +74,7 @@ fi
   fi
   rm -f "$pid_file"
 ) &
+
 bg_pid=$!
 echo "$bg_pid" > "$pid_file"
 

@@ -8,7 +8,7 @@ shell_env_project_root() {
 }
 
 PROJECT_ROOT="${PROJECT_ROOT:-$(shell_env_project_root)}"
-DATABASE_PATH="${DATABASE_PATH:-$PROJECT_ROOT/database/campus_pilot.db}"
+DATABASE_PATH="${DATABASE_PATH:-$PROJECT_ROOT/database/campuspilot.db}"
 RUNTIME_DIR="${RUNTIME_DIR:-$PROJECT_ROOT/runtime}"
 USERS_RUNTIME_DIR="${USERS_RUNTIME_DIR:-$RUNTIME_DIR/users}"
 LOG_DIR="${LOG_DIR:-$PROJECT_ROOT/logs}"

@@ -1,3 +1,6 @@
 {"level": "INFO", "module": "system", "message": "hello", "detail": "detail"}
 {"timestamp": "2026-06-06T14:00:39.896959", "level": "ERROR", "module": "schedule", "message": "list today failed", "detail": "user_id=1 result=Traceback (most recent call last):\r\n  File \"D:\\myself\\2\\CampusPilot_NJFU\\shell\\schedule\\schedule_scraper.py\", line 19, in <module>\r\n    from bs4 import BeautifulSoup\r\nModuleNotFoundError: No module named 'bs4'"}
 {"timestamp": "2026-06-06T14:02:05.457377", "level": "ERROR", "module": "schedule", "message": "list today failed", "detail": "user_id=1 result=Traceback (most recent call last):\r\n  File \"D:\\myself\\2\\CampusPilot_NJFU\\shell\\schedule\\schedule_scraper.py\", line 19, in <module>\r\n    from bs4 import BeautifulSoup\r\nModuleNotFoundError: No module named 'bs4'"}
+{"timestamp": "2026-06-06T14:33:00.622188", "level": "INFO", "module": "auth", "message": "interactive webvpn login started in background", "detail": "user_id=1 pid=238"}
+{"timestamp": "2026-06-06T14:40:12.615510", "level": "INFO", "module": "auth", "message": "interactive webvpn login started in background", "detail": "user_id=1 pid=1328"}
+{"timestamp": "2026-06-06T15:58:02.017075", "level": "INFO", "module": "auth", "message": "interactive webvpn login started in background", "detail": "user_id=1 pid=374"}

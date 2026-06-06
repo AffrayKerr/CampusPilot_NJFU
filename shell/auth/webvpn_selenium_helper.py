@@ -85,7 +85,11 @@ def setup_driver(user_id: str) -> webdriver.Chrome:
 def wait_for_webvpn_login(driver: webdriver.Chrome, timeout: int) -> bool:
     try:
         WebDriverWait(driver, timeout).until(
-            lambda d: "frontend_static/frontend/login/index.html" in d.current_url
+            lambda d: (
+                "/portal/" in d.current_url or 
+                "htmlx" in d.current_url or
+                ("webvpn.njfu.edu.cn" in d.current_url and "authserver/login" not in d.current_url and d.current_url != WEBVPN_BASE and d.current_url != WEBVPN_BASE + "/")
+            )
         )
         return True
     except TimeoutException:

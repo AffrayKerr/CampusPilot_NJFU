@@ -84,15 +84,82 @@ async function bindCampus() {
         return
     }
 
-    const result = await request("/campus/bind", {
+    const bindResult = await request("/campus/bind", {
         method: "POST",
         body: JSON.stringify({ campus_account: campusAccount, campus_password: campusPassword })
     })
-    if (result !== null) {
-        showSuccess("校园网账号绑定成功")
-        document.getElementById("campusPassword").value = ""
-        await loadCampusStatus()
+    if (bindResult === null) return
+
+    document.getElementById("campusPassword").value = ""
+
+    const statusEl = document.getElementById("campusStatus")
+    if (statusEl) {
+        statusEl.textContent = "正在启动浏览器..."
+        statusEl.className = "badge bg-info"
     }
+
+    const launchResult = await request("/auth/bind-interactive", { method: "POST" })
+    if (launchResult === null) {
+        await loadCampusStatus()
+        return
+    }
+
+    if (statusEl) {
+        statusEl.textContent = "等待浏览器登录中..."
+        statusEl.className = "badge bg-info"
+    }
+
+    await pollInteractiveStatus()
+    await loadCampusStatus()
+}
+
+async function pollInteractiveStatus() {
+    const MAX_ATTEMPTS = 120
+    const INTERVAL_MS = 3000
+    const statusEl = document.getElementById("campusStatus")
+
+    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+        // Always wait before polling — Selenium needs time to start and write results
+        await new Promise(r => setTimeout(r, INTERVAL_MS))
+
+        let raw
+        try {
+            const token = localStorage.getItem("campuspilot_token")
+            const res = await fetch("/api/auth/interactive-status", {
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(token ? { Authorization: `Bearer ${token}` } : {})
+                }
+            })
+            raw = await res.json()
+        } catch (e) {
+            continue
+        }
+
+        const status = raw?.data?.status
+        if (statusEl) {
+            statusEl.textContent = "等待登录中..."
+            statusEl.className = "badge bg-info"
+        }
+
+        if (status === "completed") {
+            showSuccess("WebVPN 登录成功！")
+            return
+        }
+        if (status === "in_progress") {
+            continue
+        }
+        // For failed/idle/undefined: ignore the first 10 attempts (30s) to allow Selenium to start up
+        if (status === "failed" || status === "idle" || status === undefined) {
+            if (i >= 10) {
+                showErr("WebVPN 登录失败，请重试")
+                return
+            }
+            continue
+        }
+    }
+
+    showErr("等待超时，请检查浏览器是否完成了登录")
 }
 
 async function unbindCampus() {
