@@ -35,7 +35,7 @@ shell_db_execute \
   "INSERT INTO seat_configs (user_id, floor, seat_no, priority, reserve_date, reserve_start_time, reserve_end_time, reserve_time_slots, check_start_time, check_stop_time, retry_interval, max_retry_count, max_duration_minutes, enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)" \
   "$user_id" "$floor" "$seat_no" "$priority" "$reserve_date" "$reserve_start_time" "$reserve_end_time" "$reserve_time_slots_json" "$check_start_time" "$check_stop_time" "$retry_interval" "$max_retry_count" "$max_duration_minutes" "$enabled"
 
-config_id=$(shell_db_query "SELECT id FROM seat_configs WHERE user_id = ? ORDER BY id DESC LIMIT 1" "$user_id" | python3 -c "import sys, json; data=json.load(sys.stdin); print(data[0]['id'] if data else '')")
+config_id=$(shell_db_query "SELECT id FROM seat_configs WHERE user_id = ? ORDER BY id DESC LIMIT 1" "$user_id" | "$(shell_common_python)" -c "import sys, json; data=json.load(sys.stdin); print(data[0]['id'] if data else '')")
 
 shell_log_write "INFO" "seat" "Seat config saved" "seat_no=$seat_no, priority=$priority" "$user_id"
 

@@ -58,7 +58,14 @@
                     <option value="high">紧急</option>
                 </select>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
+                <label>提前提醒</label>
+                <div class="input-group">
+                    <input type="number" id="taskReminderMinutes" class="form-control" min="1" placeholder="15">
+                    <span class="input-group-text">分钟</span>
+                </div>
+            </div>
+            <div class="col-md-2">
                 <label>分类</label>
                 <input type="text" id="taskCategory" class="form-control" placeholder="如：作业/项目">
             </div>
@@ -80,12 +87,13 @@
                     <th>任务名称</th>
                     <th>截止时间</th>
                     <th>优先级</th>
+                    <th>提醒</th>
                     <th>状态</th>
                     <th>操作</th>
                 </tr>
             </thead>
             <tbody>
-                <tr><td colspan="5" class="text-center text-muted">加载中...</td></tr>
+                <tr><td colspan="6" class="text-center text-muted">加载中...</td></tr>
             </tbody>
         </table>
     </div>

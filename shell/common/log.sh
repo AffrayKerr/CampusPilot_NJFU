@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -eu
 
-# shellcheck source=./env.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/env.sh"
+# shellcheck source=./db.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/db.sh"
 
 shell_log_write() {
   local level="${1:-INFO}"
@@ -20,7 +20,7 @@ shell_log_write() {
     mkdir -p "$LOG_DIR"
   fi
 
-  python - "$log_file" "$level" "$module" "$message" "$detail" "$DATABASE_PATH" "$user_id" <<'PY'
+  "$(shell_common_python)" - "$log_file" "$level" "$module" "$message" "$detail" "$DATABASE_PATH" "$user_id" <<'PY'
 import json
 import sqlite3
 import sys

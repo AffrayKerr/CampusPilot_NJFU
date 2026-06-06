@@ -17,14 +17,25 @@ window.onload = async () => {
     document.getElementById("bindBtn").onclick = bindCampus
     document.getElementById("unbindBtn").onclick = unbindCampus
     document.getElementById("logoutBtn").onclick = logout
+    document.getElementById("testEmailBtn").onclick = testEmail
+    document.getElementById("enableEmail")?.addEventListener("change", saveProfile)
+    document.getElementById("enableDesktop")?.addEventListener("change", saveProfile)
+}
+
+function toBool(value, defaultValue = false) {
+    if (value === undefined || value === null) return defaultValue
+    if (typeof value === "boolean") return value
+    if (typeof value === "number") return value !== 0
+    if (typeof value === "string") return ["1", "true", "yes", "on"].includes(value.toLowerCase())
+    return Boolean(value)
 }
 
 async function loadProfile() {
     const data = await request("/user/profile")
     if (!data) return
     document.getElementById("email").value = data.email || ""
-    document.getElementById("enableEmail").checked = false
-    document.getElementById("enableDesktop").checked = true
+    document.getElementById("enableEmail").checked = toBool(data.enable_email, false)
+    document.getElementById("enableDesktop").checked = toBool(data.enable_desktop, true)
 }
 
 async function loadCampusStatus() {
@@ -75,6 +86,33 @@ async function saveProfile() {
     }
 }
 
+async function testEmail() {
+    const email = document.getElementById("email").value.trim()
+    if (!email) {
+        showErr("请先填写邮箱")
+        return
+    }
+
+    await saveProfile()
+    const result = await request("/notification/test", {
+        method: "POST",
+        body: JSON.stringify({
+            channel: "email",
+            title: "CampusPilot 测试邮件",
+            content: "如果你收到这封邮件，说明平台邮件提醒配置已生效。"
+        })
+    })
+
+    if (result !== null) {
+        const emailResult = result.email || result?.data?.email
+        if (emailResult === "success") {
+            showSuccess("测试邮件已发送，请检查邮箱")
+        } else {
+            showErr(`测试邮件发送失败：${emailResult || "请检查 SMTP 配置"}`)
+        }
+    }
+}
+
 async function bindCampus() {
     const campusAccount = document.getElementById("campusAccount").value.trim()
     const campusPassword = document.getElementById("campusPassword").value.trim()
@@ -119,7 +157,6 @@ async function pollInteractiveStatus() {
     const statusEl = document.getElementById("campusStatus")
 
     for (let i = 0; i < MAX_ATTEMPTS; i++) {
-        // Always wait before polling — Selenium needs time to start and write results
         await new Promise(r => setTimeout(r, INTERVAL_MS))
 
         let raw
@@ -149,7 +186,6 @@ async function pollInteractiveStatus() {
         if (status === "in_progress") {
             continue
         }
-        // For failed/idle/undefined: ignore the first 10 attempts (30s) to allow Selenium to start up
         if (status === "failed" || status === "idle" || status === undefined) {
             if (i >= 10) {
                 showErr("WebVPN 登录失败，请重试")

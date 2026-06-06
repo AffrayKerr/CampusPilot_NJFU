@@ -46,13 +46,22 @@
         </div>
     </div>
 
+    <div id="seatWorkerMessage" class="alert alert-info d-none" role="status"></div>
+
     <div class="row g-4">
         <div class="col-md-6">
             <div class="card p-4">
                 <h5>添加座位配置</h5>
                 <div class="mb-3">
-                    <label>楼层</label>
-                    <input type="text" id="seatFloor" class="form-control" placeholder="如：3F">
+                    <label for="seatFloor">楼层</label>
+                    <select id="seatFloor" class="form-control">
+                        <option value="2F">图书馆二层</option>
+                        <option value="3F">图书馆三层</option>
+                        <option value="4F" selected>图书馆四层</option>
+                        <option value="5F">图书馆五层</option>
+                        <option value="6F">图书馆六层</option>
+                        <option value="7F">图书馆七层</option>
+                    </select>
                 </div>
                 <div class="mb-3">
                     <label>座位号</label>

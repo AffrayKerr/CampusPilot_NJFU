@@ -13,6 +13,7 @@ import time
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import requests
 import urllib3
@@ -316,7 +317,14 @@ def parse_exams(html: str) -> list[dict[str, Any]]:
     if not rows:
         return exams
 
-    header_cells = rows[0].find_all(["th", "td"])
+    header_row_index = 0
+    for idx, row in enumerate(rows):
+        row_text = row.get_text(" ", strip=True)
+        if "课程" in row_text and ("时间" in row_text or "考场" in row_text):
+            header_row_index = idx
+            break
+
+    header_cells = rows[header_row_index].find_all(["th", "td"])
     headers = [cell.get_text(" ", strip=True).replace("\xa0", "") for cell in header_cells]
 
     def find_col(*keywords: str) -> int | None:
@@ -339,7 +347,7 @@ def parse_exams(html: str) -> list[dict[str, Any]]:
     if seat_idx is None:
         seat_idx = 9 if len(headers) > 9 else None
 
-    for row in rows[1:]:
+    for row in rows[header_row_index + 1:]:
         cells = row.find_all("td")
         if not cells:
             continue
@@ -576,6 +584,20 @@ def cmd_list_week(user_id: str, offset_weeks: int = 0) -> None:
     emit(True, "执行成功", data)
 
 
+def exam_time_matches_month(exam_time: str | None, target: date) -> bool:
+    if not exam_time:
+        return False
+    text = str(exam_time).strip()
+    year = target.year
+    month = target.month
+    patterns = [
+        rf"{year}[-/.\u5e74]0?{month}(?:[-/.\u6708]|\b)",
+        rf"0?{month}\s*\u6708\s*\d{{1,2}}\s*\u65e5?",
+        rf"0?{month}[-/.]\d{{1,2}}",
+    ]
+    return any(re.search(pattern, text) for pattern in patterns)
+
+
 def cmd_list_today(user_id: str) -> None:
     conn = db_connect()
     today = date.today()
@@ -606,12 +628,12 @@ def cmd_list_today(user_id: str) -> None:
         (user_id, today_str),
     ).fetchall()
 
-    month_prefix = today.strftime("%Y-%m")
-    exam_rows = conn.execute(
+    all_exam_rows = conn.execute(
         "SELECT id, course_name, exam_time, exam_location, seat_number FROM exams "
-        "WHERE user_id = ? AND exam_time LIKE ? ORDER BY exam_time ASC, id ASC",
-        (user_id, f"%{month_prefix}%"),
+        "WHERE user_id = ? ORDER BY exam_time ASC, id ASC",
+        (user_id,),
     ).fetchall()
+    exam_rows = [row for row in all_exam_rows if exam_time_matches_month(row["exam_time"], today)]
 
     conn.close()
     emit(True, "执行成功", {
@@ -839,6 +861,122 @@ def fetch_schedule_html_with_browser(user_id: str) -> str:
         driver.quit()
 
 
+def fetch_exam_html_with_browser(user_id: str) -> str:
+    try:
+        from selenium import webdriver
+        from selenium.common.exceptions import TimeoutException, WebDriverException
+        from selenium.webdriver.chrome.options import Options
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.support.ui import Select, WebDriverWait
+    except ImportError as exc:
+        raise RuntimeError("selenium is required for exam sync; run: pip install selenium") from exc
+
+    timeout = int(os.environ.get("SCHEDULE_BROWSER_TIMEOUT", "60"))
+    profile_path = chrome_profile_path(user_id)
+    if not profile_path.exists():
+        raise RuntimeError("chrome profile not found; run bind_webvpn_interactive.sh first")
+
+    options = Options()
+    options.page_load_strategy = "eager"
+    options.add_argument(f"--user-data-dir={profile_path}")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    if os.environ.get("SCHEDULE_HEADLESS", "0") == "1":
+        options.add_argument("--headless=new")
+    else:
+        options.add_argument("--window-position=-2400,-2400")
+        options.add_argument("--window-size=1280,800")
+
+    print(json.dumps({"status": "starting_exam_browser"}, ensure_ascii=False), file=sys.stderr, flush=True)
+    try:
+        driver = webdriver.Chrome(options=options)
+    except WebDriverException as exc:
+        raise RuntimeError(f"failed to start Chrome/ChromeDriver: {exc}") from exc
+
+    try:
+        driver.set_page_load_timeout(timeout)
+        _inject_cookies_into_browser(driver, user_id, timeout)
+
+        try:
+            driver.get(JWC_MAIN)
+        except TimeoutException:
+            print(json.dumps({"status": "exam_jwc_warmup_timeout", "current_url": driver.current_url}, ensure_ascii=False), file=sys.stderr, flush=True)
+
+        try:
+            WebDriverWait(driver, timeout).until(
+                lambda d: ("jsxsd" in d.current_url or "htmlx" in d.current_url) and "authserver/login" not in d.current_url
+            )
+        except TimeoutException:
+            pass
+
+        try:
+            driver.get(EXAM_QUERY_URL)
+        except TimeoutException:
+            print(json.dumps({"status": "exam_query_timeout", "current_url": driver.current_url}, ensure_ascii=False), file=sys.stderr, flush=True)
+
+        if "404" in driver.title or "错误" in driver.title:
+            try:
+                driver.get(EXAM_QUERY_URL_FALLBACK)
+            except TimeoutException:
+                print(json.dumps({"status": "exam_query_fallback_timeout", "current_url": driver.current_url}, ensure_ascii=False), file=sys.stderr, flush=True)
+
+        WebDriverWait(driver, timeout).until(
+            lambda d: "考试安排查询" in d.page_source or "考试名称" in d.page_source or "dataList" in d.page_source
+        )
+
+        selects = driver.find_elements(By.TAG_NAME, "select")
+        for select_el in selects:
+            options_text = [option.text.strip() for option in select_el.find_elements(By.TAG_NAME, "option")]
+            if not any(("新庄校区" in text or "未考试" in text) for text in options_text):
+                continue
+            selector = Select(select_el)
+            chosen_text = ""
+            for text in options_text:
+                if "新庄校区" in text:
+                    chosen_text = text
+                    break
+            if not chosen_text:
+                for text in options_text:
+                    if "未考试" in text:
+                        chosen_text = text
+                        break
+            if chosen_text:
+                selector.select_by_visible_text(chosen_text)
+                print(json.dumps({"status": "exam_option_selected", "text": chosen_text}, ensure_ascii=False), file=sys.stderr, flush=True)
+                break
+
+        clicked = False
+        for button in driver.find_elements(By.XPATH, "//button|//input[@type='button' or @type='submit']|//a"):
+            text = (button.text or button.get_attribute("value") or "").strip()
+            if "查询" not in text:
+                continue
+            try:
+                button.click()
+                clicked = True
+                time.sleep(2)
+                break
+            except Exception:
+                continue
+
+        if not clicked:
+            params = extract_exam_query_params(driver.page_source)
+            query = "&".join(f"{quote(str(k))}={quote(str(v))}" for k, v in params.items())
+            driver.get(f"{EXAM_URL}?{query}")
+
+        try:
+            WebDriverWait(driver, timeout).until(
+                lambda d: "dataList" in d.page_source or "课程名称" in d.page_source or "查询结果" in d.page_source
+            )
+        except TimeoutException:
+            print(json.dumps({"status": "exam_result_wait_timeout", "current_url": driver.current_url}, ensure_ascii=False), file=sys.stderr, flush=True)
+
+        return driver.page_source
+    finally:
+        driver.quit()
+
+
 def cmd_detect_changes(user_id: str) -> None:
     conn = db_connect()
     old_rows = conn.execute(
@@ -900,11 +1038,24 @@ def cmd_sync_schedule(user_id: str) -> None:
 
 
 def cmd_sync_exam(user_id: str) -> None:
-    session = load_session(user_id)
-    html = fetch_exam_html(session)
-    exams = parse_exams(html)
+    source = "requests"
+    exams: list[dict[str, Any]] = []
+
+    try:
+        session = load_session(user_id)
+        html = fetch_exam_html(session)
+        exams = parse_exams(html)
+    except Exception as exc:
+        print(json.dumps({"status": "requests_exam_failed", "error": str(exc), "fallback_to_browser": True}, ensure_ascii=False), file=sys.stderr, flush=True)
+
+    if not exams:
+        print(json.dumps({"status": "requests_no_exams_fallback_to_browser"}, ensure_ascii=False), file=sys.stderr, flush=True)
+        source = "selenium"
+        html = fetch_exam_html_with_browser(user_id)
+        exams = parse_exams(html)
+
     save_exams(user_id, exams)
-    emit(True, f"synced {len(exams)} exams", {"count": len(exams)})
+    emit(True, f"synced {len(exams)} exams", {"count": len(exams), "source": source})
 
 
 def main() -> None:

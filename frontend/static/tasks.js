@@ -16,7 +16,7 @@ async function loadTasks() {
     if (!tbody) return
 
     if (data.tasks.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">暂无任务</td></tr>'
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">暂无任务</td></tr>'
         return
     }
 
@@ -25,6 +25,7 @@ async function loadTasks() {
             <td>${t.title}</td>
             <td>${t.deadline}</td>
             <td><span class="badge bg-${getPriorityColor(t.priority)}">${getPriorityText(t.priority)}</span></td>
+            <td>${t.remind_before_minutes ? `提前 ${t.remind_before_minutes} 分钟` : '未设置'}</td>
             <td><span class="badge bg-${getStatusColor(t.status)}">${getStatusText(t.status)}</span></td>
             <td>
                 <button class="btn btn-sm btn-success" onclick="markTaskDone(${t.id})">完成</button>
@@ -60,9 +61,16 @@ async function addTask() {
     const priority = document.getElementById("taskPriority")?.value || "medium"
     const category = document.getElementById("taskCategory")?.value.trim() || ""
     const note = document.getElementById("taskNote")?.value.trim() || ""
+    const reminderMinutesRaw = document.getElementById("taskReminderMinutes")?.value.trim() || ""
+    const reminderBeforeMinutes = reminderMinutesRaw ? Number(reminderMinutesRaw) : null
 
     if (!title || !deadline) {
         showErr("请填写任务名称和截止时间")
+        return
+    }
+
+    if (reminderBeforeMinutes !== null && (!Number.isInteger(reminderBeforeMinutes) || reminderBeforeMinutes <= 0)) {
+        showErr("提醒时间必须是大于 0 的整数分钟")
         return
     }
 
@@ -74,7 +82,8 @@ async function addTask() {
             priority,
             category,
             note,
-            repeat_rule: "none"
+            repeat_rule: "none",
+            remind_before_minutes: reminderBeforeMinutes
         })
     })
 
@@ -82,6 +91,7 @@ async function addTask() {
         showSuccess("任务添加成功")
         document.getElementById("taskTitle").value = ""
         document.getElementById("taskDeadline").value = ""
+        document.getElementById("taskReminderMinutes").value = ""
         document.getElementById("taskNote").value = ""
         await loadTasks()
     }

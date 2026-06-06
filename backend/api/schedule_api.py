@@ -24,7 +24,7 @@ def sync_schedule():
 @schedule_bp.route("/exam/sync", methods=["POST"])
 @campus_account_required
 def sync_exam():
-    result = run_shell("shell/schedule/sync_exam.sh", [g.current_user["id"]], timeout=120)
+    result = run_shell("shell/schedule/sync_exam.sh", [g.current_user["id"]], timeout=150)
     return jsonify(result)
 
 

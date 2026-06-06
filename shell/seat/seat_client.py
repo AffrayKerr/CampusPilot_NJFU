@@ -198,8 +198,12 @@ def _extract_library_auth_from_browser(driver: Any, timeout: int) -> tuple[str, 
                 var done = arguments[0];
                 var url = arguments[1];
                 var token = arguments[2] || '';
-                fetch(url, {headers: {token: token, Accept: 'application/json'}})
-                  .then(r => r.json()).then(d => done(JSON.stringify(d))).catch(e => done(null));
+                var controller = new AbortController();
+                var timer = setTimeout(function() { controller.abort(); done(null); }, 8000);
+                fetch(url, {headers: {token: token, Accept: 'application/json'}, signal: controller.signal})
+                  .then(function(r) { return r.json(); })
+                  .then(function(d) { clearTimeout(timer); done(JSON.stringify(d)); })
+                  .catch(function() { clearTimeout(timer); done(null); });
                 """,
                 url,
                 token,
@@ -252,6 +256,7 @@ def _fetch_token_via_browser(user_id: str) -> tuple[str, int]:
 
     try:
         driver.set_page_load_timeout(timeout)
+        driver.set_script_timeout(min(timeout, 15))
         driver.get("https://webvpn.njfu.edu.cn")
         for name, value, domain in load_webvpn_cookie_pairs(user_id):
             try:
@@ -481,48 +486,75 @@ def cmd_retry(user_id: str) -> None:
     emit(False, "All retry attempts failed", None, 1)
 
 def cmd_worker(user_id: str) -> None:
-    conn = db_connect()
-    configs = conn.execute(
-        "SELECT * FROM seat_configs WHERE user_id = ? AND enabled = 1 ORDER BY priority ASC", (user_id,)
-    ).fetchall()
-    conn.close()
-    if not configs:
-        return
+    log_message(user_id, "INFO", "Worker preparing library token", "")
     token, app_acc_no = get_library_token(user_id)
     session = make_library_session(token)
-    worker_start = time.time()
-    for config in configs:
-        if not _is_within_check_window(config):
+    log_message(user_id, "INFO", "Worker library token ready", f"app_acc_no={app_acc_no}")
+    processed_configs: set[int] = set()
+
+    while True:
+        conn = db_connect()
+        configs = conn.execute(
+            "SELECT * FROM seat_configs WHERE user_id = ? AND enabled = 1 ORDER BY priority ASC", (user_id,)
+        ).fetchall()
+        conn.close()
+
+        if not configs:
+            log_message(user_id, "INFO", "Worker waiting for enabled seat configs", "")
+            time.sleep(10)
             continue
-        max_duration = (config["max_duration_minutes"] or 15) * 60
-        if time.time() - worker_start > max_duration:
-            log_message(user_id, "INFO", "Worker max duration reached", config["seat_no"])
+
+        did_work = False
+        for config in configs:
+            config_id = int(config["id"])
+            if config_id in processed_configs:
+                continue
+            if not _is_within_check_window(config):
+                continue
+
+            did_work = True
+            attempt_start = time.time()
+            max_duration = (config["max_duration_minutes"] or 15) * 60
+            retry_count, max_retries = 0, config["max_retry_count"]
+            date = config["reserve_date"] or datetime.now().strftime("%Y-%m-%d")
+            floor = config["floor"] or ""
+            log_message(user_id, "INFO", f"Worker trying seat: {config['seat_no']}", f"floor={floor}, date={date}, retries={max_retries}")
+
+            while retry_count < max_retries:
+                if time.time() - attempt_start > max_duration:
+                    log_message(user_id, "INFO", "Worker max duration reached", config["seat_no"])
+                    return
+                if not _is_within_check_window(config):
+                    log_message(user_id, "INFO", "Worker check window ended", config["seat_no"])
+                    processed_configs.add(config_id)
+                    break
+                try:
+                    for slot in _get_time_slots(config):
+                        result = reserve_seat(session, app_acc_no, config["seat_no"], floor, date, slot["start_time"], slot["end_time"])
+                        if result.get("success"):
+                            reserve_time = f"{date} {slot['start_time']}-{slot['end_time']}"
+                            save_seat_result(user_id, config["seat_no"], reserve_time, "success", result.get("message", ""))
+                            log_message(user_id, "INFO", f"Worker reserved seat: {config['seat_no']}", reserve_time)
+                            return
+                    retry_count += 1
+                    if retry_count < max_retries:
+                        time.sleep(config["retry_interval"] or 10)
+                except Exception as exc:
+                    log_message(user_id, "ERROR", f"Worker error: {config['seat_no']}", str(exc))
+                    retry_count += 1
+                    if retry_count < max_retries:
+                        time.sleep(config["retry_interval"] or 10)
+
+            if retry_count >= max_retries:
+                processed_configs.add(config_id)
+                save_seat_result(user_id, config["seat_no"], "", "failed", "Max retries exceeded")
+                log_message(user_id, "WARNING", f"Worker gave up on seat: {config['seat_no']}", "max retries exceeded")
+
+        if did_work and len(processed_configs) >= len(configs):
+            log_message(user_id, "INFO", "Worker finished all enabled seat configs", "")
             return
-        retry_count, max_retries = 0, config["max_retry_count"]
-        date = config["reserve_date"] or datetime.now().strftime("%Y-%m-%d")
-        floor = config["floor"] or ""
-        while retry_count < max_retries:
-            if time.time() - worker_start > max_duration:
-                log_message(user_id, "INFO", "Worker max duration reached mid-retry", config["seat_no"])
-                return
-            try:
-                for slot in _get_time_slots(config):
-                    result = reserve_seat(session, app_acc_no, config["seat_no"], floor, date, slot["start_time"], slot["end_time"])
-                    if result.get("success"):
-                        reserve_time = f"{date} {slot['start_time']}-{slot['end_time']}"
-                        save_seat_result(user_id, config["seat_no"], reserve_time, "success", result.get("message", ""))
-                        log_message(user_id, "INFO", f"Worker reserved seat: {config['seat_no']}", reserve_time)
-                        return
-                retry_count += 1
-                if retry_count < max_retries:
-                    time.sleep(config["retry_interval"] or 10)
-            except Exception as exc:
-                log_message(user_id, "ERROR", f"Worker error: {config['seat_no']}", str(exc))
-                retry_count += 1
-                if retry_count < max_retries:
-                    time.sleep(config["retry_interval"] or 10)
-        save_seat_result(user_id, config["seat_no"], "", "failed", "Max retries exceeded")
-        log_message(user_id, "WARN", f"Worker gave up on seat: {config['seat_no']}", "max retries exceeded")
+
+        time.sleep(10)
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="CampusPilot library seat client")

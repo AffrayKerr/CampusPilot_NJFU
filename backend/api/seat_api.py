@@ -232,6 +232,7 @@ def reserve_seat():
         [
             g.current_user["id"],
             data["seat_no"],
+            data.get("floor", ""),
             data.get("reserve_date", ""),
             reserve_start_time,
             reserve_end_time,

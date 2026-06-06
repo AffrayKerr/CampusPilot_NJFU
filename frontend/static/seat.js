@@ -5,6 +5,7 @@ window.onload = async () => {
     
     await loadSeatConfigs()
     await loadSeatStatus()
+    setInterval(loadSeatStatus, 15000)
     
     document.getElementById("addConfigBtn")?.addEventListener("click", addSeatConfig)
     document.getElementById("startWorkerBtn")?.addEventListener("click", startWorker)
@@ -13,17 +14,22 @@ window.onload = async () => {
 
 async function loadSeatConfigs() {
     const data = await request("/seat/config/list")
-    if (!data || !data.configs) return
+    const configs = Array.isArray(data) ? data : data?.configs
 
     const tbody = document.querySelector("#configTable tbody")
     if (!tbody) return
 
-    if (data.configs.length === 0) {
+    if (!configs) {
         tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">暂无座位配置</td></tr>'
         return
     }
 
-    tbody.innerHTML = data.configs.map(c => `
+    if (configs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">暂无座位配置</td></tr>'
+        return
+    }
+
+    tbody.innerHTML = configs.map(c => `
         <tr>
             <td>${c.floor || '-'} / ${c.seat_no}</td>
             <td>${c.reserve_date}</td>
@@ -37,15 +43,51 @@ async function loadSeatConfigs() {
     `).join('')
 }
 
+function setWorkerStatus(running, message = "") {
+    const statusEl = document.getElementById("workerStatus")
+    if (statusEl) {
+        statusEl.textContent = running ? "运行中" : "已停止"
+        statusEl.className = running ? "badge bg-success" : "badge bg-secondary"
+    }
+
+    const messageEl = document.getElementById("seatWorkerMessage")
+    if (!messageEl) return
+    if (!message) {
+        messageEl.className = "alert alert-info d-none"
+        messageEl.textContent = ""
+        return
+    }
+    messageEl.className = running ? "alert alert-info" : "alert alert-warning"
+    messageEl.textContent = message
+}
+
 async function loadSeatStatus() {
     const data = await request("/seat/status")
     if (!data) return
 
-    const statusEl = document.getElementById("workerStatus")
-    if (statusEl) {
-        statusEl.textContent = data.running ? "运行中" : "已停止"
-        statusEl.className = data.running ? "badge bg-success" : "badge bg-secondary"
+    const message = data.last_message ? formatWorkerMessage(data.last_message) : ""
+    setWorkerStatus(Boolean(data.running), message)
+}
+
+function formatWorkerMessage(raw) {
+    try {
+        const parsed = JSON.parse(raw)
+        const message = parsed.message || parsed.status || ""
+        if (message.includes("script timeout")) {
+            return "最近一次运行结果：获取图书馆登录信息超时，请确认 WebVPN/图书馆页面已登录成功后重试。"
+        }
+        if (message.includes("library token/appAccNo not found")) {
+            return "最近一次运行结果：未获取到图书馆 token，请重新完成 WebVPN 图书馆登录。"
+        }
+        if (message.includes("chrome profile not found")) {
+            return "最近一次运行结果：未找到浏览器登录配置，请先完成 WebVPN 交互登录。"
+        }
+        if (parsed.message) return `最近一次运行结果：${parsed.message}`
+        if (parsed.status) return `最近一次运行状态：${parsed.status}`
+    } catch (e) {
+        // keep raw text below
     }
+    return `最近一次运行信息：${raw}`
 }
 
 async function addSeatConfig() {
@@ -104,14 +146,16 @@ window.deleteSeatConfig = async function(id) {
 async function startWorker() {
     const result = await request("/seat/start", { method: "POST" })
     if (result !== null) {
+        setWorkerStatus(true, "抢座 Worker 已启动，正在准备图书馆登录状态或等待检查窗口。")
         showSuccess("抢座Worker已启动")
-        await loadSeatStatus()
+        setTimeout(loadSeatStatus, 1000)
     }
 }
 
 async function stopWorker() {
     const result = await request("/seat/stop", { method: "POST" })
     if (result !== null) {
+        setWorkerStatus(false, "抢座 Worker 已停止。")
         showSuccess("抢座Worker已停止")
         await loadSeatStatus()
     }

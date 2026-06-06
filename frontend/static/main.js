@@ -33,7 +33,10 @@ export async function request(url, opts = {}, silent = false) {
                 return null
             }
             if (!silent) {
-                showErr(data.message || "操作失败")
+                const message = data.message === "Shell script execution timeout"
+                    ? "考试安排同步超时，请确认教务网登录状态后重试"
+                    : (data.message || "操作失败")
+                showErr(message)
             }
             return null
         }
