@@ -1,0 +1,6 @@
+2026/06/06-00:18:03.846 82f4 Reusing MANIFEST D:\myself\2\CampusPilot_NJFU\runtime\users\test_user\chrome_profile\Default\shared_proto_db/MANIFEST-000001
+2026/06/06-00:18:03.847 82f4 Recovering log #3
+2026/06/06-00:18:03.849 82f4 Reusing old log D:\myself\2\CampusPilot_NJFU\runtime\users\test_user\chrome_profile\Default\shared_proto_db/000003.log 
+2026/06/06-00:18:10.288 6204 Level-0 table #5: started
+2026/06/06-00:18:10.293 6204 Level-0 table #5: 115809 bytes OK
+2026/06/06-00:18:10.298 6204 Delete type=0 #3

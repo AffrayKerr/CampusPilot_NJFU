@@ -1,0 +1,2 @@
+{"timestamp": "2026-06-05T21:51:23.153105", "level": "WARNING", "module": "notification", "message": "notify-send not available", "detail": "user_id=9"}
+{"timestamp": "2026-06-05T21:51:23.472051", "level": "INFO", "module": "notification", "message": "feedback notification sent", "detail": "feedback_id=1 user_id=9 status=resolved sent=1"}
