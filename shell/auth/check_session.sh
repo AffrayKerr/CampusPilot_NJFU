@@ -34,5 +34,6 @@ if ! result_json="$("$AUTH_PYTHON" "$SCRIPT_DIR/webvpn_client.py" check "$user_i
 fi
 
 cookie_file="$(shell_cookie_path "$user_id")"
+shell_db_execute "UPDATE campus_accounts SET session_valid=1, last_login_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE user_id=?" "$user_id" 2>/dev/null || true
 shell_log_write INFO auth "webvpn session checked" "user_id=$user_id cookie=$cookie_file" "$user_id"
 printf '%s\n' "$result_json"

@@ -86,9 +86,14 @@ def wait_for_webvpn_login(driver: webdriver.Chrome, timeout: int) -> bool:
     try:
         WebDriverWait(driver, timeout).until(
             lambda d: (
-                "/portal/" in d.current_url or 
+                "/portal/" in d.current_url or
                 "htmlx" in d.current_url or
-                ("webvpn.njfu.edu.cn" in d.current_url and "authserver/login" not in d.current_url and d.current_url != WEBVPN_BASE and d.current_url != WEBVPN_BASE + "/")
+                (
+                    "webvpn.njfu.edu.cn" in d.current_url
+                    and "authserver/login" not in d.current_url
+                    and d.current_url != WEBVPN_BASE
+                    and d.current_url != WEBVPN_BASE + "/"
+                )
             )
         )
         return True
@@ -113,7 +118,6 @@ def warmup_jwc_session(driver: webdriver.Chrome) -> None:
 
 
 def extract_cookies(driver: webdriver.Chrome) -> list[dict[str, str]]:
-    # Use CDP to get ALL cookies across all domains/paths (more complete than driver.get_cookies())
     try:
         result = driver.execute_cdp_cmd("Network.getAllCookies", {})
         all_cookies = result.get("cookies", [])
@@ -151,39 +155,52 @@ def save_cookies(cookies: list[dict[str, str]], path: Path) -> None:
     lines = []
     for c in cookies:
         domain = c.get("domain", "")
-        cookie_path = c.get("path", "/")
-        lines.append(f"{c['name']}={c['value']}|{domain}|{cookie_path}")
+        c_path = c.get("path", "/")
+        lines.append(f"{c['name']}={c['value']}|{domain}|{c_path}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def update_database(user_id: str, cookie_file: Path) -> None:
     import os
     import sqlite3 as _sqlite3
+
     env_path = os.environ.get("DATABASE_PATH")
     if env_path:
         db_path = env_path
     else:
-        db_path = str(Path(__file__).resolve().parents[2] / "database" / "campus_pilot.db")
+        db_path = str(Path(__file__).resolve().parents[2] / "database" / "campuspilot.db")
 
+    # Update campus_accounts in its own transaction so it commits independently
     conn = _sqlite3.connect(db_path)
-    conn.execute(
-        """
-        UPDATE campus_accounts
-        SET webvpn_cookie_path = ?, session_valid = 1,
-            last_login_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-        WHERE user_id = ?
-        """,
-        (str(cookie_file), user_id),
-    )
-    conn.execute(
-        """
-        INSERT INTO sessions (user_id, session_type, cookie_path, is_valid, last_checked_at)
-        VALUES (?, 'webvpn', ?, 1, CURRENT_TIMESTAMP)
-        """,
-        (user_id, str(cookie_file)),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        conn.execute(
+            """
+            UPDATE campus_accounts
+            SET webvpn_cookie_path = ?, session_valid = 1,
+                last_login_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = ?
+            """,
+            (str(cookie_file), user_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Insert session record in a separate transaction — failure here won't roll back the UPDATE above
+    conn2 = _sqlite3.connect(db_path)
+    try:
+        conn2.execute(
+            """
+            INSERT INTO sessions (user_id, session_type, cookie_path, is_valid, last_checked_at)
+            VALUES (?, 'webvpn', ?, 1, CURRENT_TIMESTAMP)
+            """,
+            (user_id, str(cookie_file)),
+        )
+        conn2.commit()
+    except Exception:
+        pass
+    finally:
+        conn2.close()
 
 
 def main() -> None:
@@ -209,7 +226,6 @@ def main() -> None:
 
         time.sleep(1)
 
-        # After WebVPN login, visit JWC so browser completes SSO and gets JWC session cookies
         warmup_jwc_session(driver)
 
         cookies = extract_cookies(driver)
@@ -219,6 +235,8 @@ def main() -> None:
 
         save_cookies(cookies, cookie_file)
         update_database(user_id, cookie_file)
+
+        time.sleep(10)
 
         emit(True, "interactive login completed", {
             "cookie_count": len(cookies),

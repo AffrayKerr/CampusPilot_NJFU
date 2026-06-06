@@ -36,6 +36,10 @@ def run_shell(script_path, args=None, timeout=30):
     bash_cmd = get_bash_command()
     command = [bash_cmd, str(full_script_path)] + [str(arg) for arg in args]
 
+    env = os.environ.copy()
+    env["DATABASE_PATH"] = str(PROJECT_ROOT / "database" / "campuspilot.db")
+    env["PROJECT_ROOT"] = str(PROJECT_ROOT)
+
     try:
         result = subprocess.run(
             command,
@@ -43,6 +47,7 @@ def run_shell(script_path, args=None, timeout=30):
             text=True,
             timeout=timeout,
             cwd=str(PROJECT_ROOT),
+            env=env,
         )
     except subprocess.TimeoutExpired:
         return {

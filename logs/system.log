@@ -1,2 +1,3 @@
 {"timestamp": "2026-06-04T22:20:23.589495", "level": "WARNING", "module": "system", "message": "sys warn", "detail": ""}
 {"timestamp": "2026-06-05T21:51:24.292899", "level": "INFO", "module": "notification", "message": "feedback notification skipped: anonymous", "detail": "feedback_id=2"}
+{"timestamp": "2026-06-06T16:21:28.963705", "level": "INFO", "module": "system", "message": "数据库初始化完成", "detail": "db=D:/myself/2/CampusPilot_NJFU/database/campuspilot.db"}
