@@ -35,6 +35,13 @@ def list_today():
     return jsonify(result)
 
 
+@schedule_bp.route("/next-week", methods=["GET"])
+@login_required
+def list_next_week():
+    result = run_shell("shell/schedule/list_next_week.sh", [g.current_user["id"]], timeout=30)
+    return jsonify(result)
+
+
 @schedule_bp.route("/changes/detect", methods=["POST"])
 @campus_account_required
 def detect_changes():

@@ -63,8 +63,8 @@ try:
             uid = row[0]
 
     conn.execute(
-        "INSERT INTO logs (user_id, module, level, message, detail) VALUES (?, ?, ?, ?, ?)",
-        (uid, module, level, message, detail),
+        "INSERT INTO logs (user_id, module, level, message, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (uid, module, level, message, detail, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
     )
     conn.commit()
     conn.close()

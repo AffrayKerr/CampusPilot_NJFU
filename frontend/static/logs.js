@@ -2,25 +2,37 @@ import { request, checkLogin } from "./main.js"
 
 window.onload = async () => {
     if (!checkLogin()) return
-    
+
     await loadLogs()
-    
+
     document.getElementById("filterAll")?.addEventListener("click", () => loadLogs())
     document.getElementById("filterError")?.addEventListener("click", () => loadErrorLogs())
 }
 
 async function loadLogs() {
     const data = await request("/logs/list?limit=100")
-    if (!data || !data.logs) return
+    if (!data || !data.logs) {
+        renderLoadError()
+        return
+    }
 
     renderLogs(data.logs)
 }
 
 async function loadErrorLogs() {
     const data = await request("/logs/error?limit=50")
-    if (!data || !data.logs) return
+    if (!data || !data.logs) {
+        renderLoadError()
+        return
+    }
 
     renderLogs(data.logs)
+}
+
+function renderLoadError() {
+    const tbody = document.querySelector("#logTable tbody")
+    if (!tbody) return
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger">日志加载失败，请稍后重试</td></tr>'
 }
 
 function renderLogs(logs) {
@@ -48,21 +60,23 @@ function renderLogs(logs) {
 
 function getLevelBadge(level) {
     const badges = {
-        'INFO': '<span class="badge bg-success">INFO</span>',
-        'WARN': '<span class="badge bg-warning">WARN</span>',
-        'ERROR': '<span class="badge bg-danger">ERROR</span>',
-        'DEBUG': '<span class="badge bg-secondary">DEBUG</span>'
+        INFO: '<span class="badge bg-success">INFO</span>',
+        WARN: '<span class="badge bg-warning">WARN</span>',
+        WARNING: '<span class="badge bg-warning">WARN</span>',
+        ERROR: '<span class="badge bg-danger">ERROR</span>',
+        CRITICAL: '<span class="badge bg-danger">CRITICAL</span>',
+        DEBUG: '<span class="badge bg-secondary">DEBUG</span>'
     }
     return badges[level] || `<span class="badge bg-secondary">${level}</span>`
 }
 
 function getModuleBadge(module) {
     const badges = {
-        'auth': '<span class="badge bg-primary">登录</span>',
-        'schedule': '<span class="badge bg-info">课表</span>',
-        'seat': '<span class="badge bg-success">抢座</span>',
-        'task': '<span class="badge bg-warning">任务</span>',
-        'notification': '<span class="badge bg-secondary">通知</span>'
+        auth: '<span class="badge bg-primary">登录</span>',
+        schedule: '<span class="badge bg-info">课表</span>',
+        seat: '<span class="badge bg-success">抢座</span>',
+        task: '<span class="badge bg-warning">任务</span>',
+        notification: '<span class="badge bg-secondary">通知</span>'
     }
     return badges[module] || `<span class="badge bg-secondary">${module}</span>`
 }

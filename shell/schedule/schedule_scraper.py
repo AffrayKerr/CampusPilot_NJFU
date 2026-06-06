@@ -27,6 +27,8 @@ JWC_BASE = (
 JWC_MAIN = f"{JWC_BASE}/jsxsd/framework/xsMainV.jsp?vpn-0"
 SCHEDULE_LIST_URL = f"{JWC_BASE}/jsxsd/xskb/xskb_list.do"
 SCHEDULE_PRINT_URL = f"{JWC_BASE}/jsxsd/xskb/xskb_print.do?vpn-0"
+EXAM_QUERY_URL = f"{JWC_BASE}/jsxsd/xsks/xsksap_query"
+EXAM_QUERY_URL_FALLBACK = f"{JWC_BASE}/jsxsd/xsks/xsksap_query.do"
 EXAM_URL = f"{JWC_BASE}/jsxsd/xsks/xsksap_list"
 
 USER_AGENT = (
@@ -183,6 +185,67 @@ def fetch_schedule_html(session: requests.Session) -> tuple[str, dict[str, str]]
     return print_resp.text, params
 
 
+def extract_exam_query_params(html: str) -> dict[str, str]:
+    soup = BeautifulSoup(html, "html.parser")
+    params: dict[str, str] = {}
+
+    for field in soup.find_all(["input", "select"]):
+        name = field.get("name")
+        if not name:
+            continue
+        if field.name == "select":
+            selected = field.find("option", selected=True) or field.find("option")
+            params[name] = selected.get("value", "") if selected else ""
+        elif field.get("type", "").lower() in {"hidden", "text"}:
+            params[name] = field.get("value", "")
+
+    term_select = soup.find("select", {"name": re.compile(r"xnxq|xq|term", re.I)})
+    if term_select and term_select.get("name"):
+        selected = term_select.find("option", selected=True) or term_select.find("option")
+        if selected and selected.get("value"):
+            params[term_select["name"]] = selected["value"]
+
+    exam_select = soup.find("select", {"name": re.compile(r"ks|exam", re.I)})
+    if exam_select and exam_select.get("name"):
+        options = exam_select.find_all("option")
+        chosen = None
+        for option in options:
+            text = option.get_text(" ", strip=True)
+            if "新庄校区" in text:
+                chosen = option
+                break
+        if not chosen:
+            for option in options:
+                text = option.get_text(" ", strip=True)
+                if "未考试" in text:
+                    chosen = option
+                    break
+        if not chosen and len(options) > 1:
+            chosen = options[1]
+        if chosen and chosen.get("value"):
+            params[exam_select["name"]] = chosen["value"]
+
+    params.setdefault("xqlbmc", "")
+    return params
+
+
+def fetch_exam_html(session: requests.Session) -> str:
+    try:
+        query_resp = session.get(EXAM_QUERY_URL, timeout=30)
+        query_resp.raise_for_status()
+    except requests.RequestException:
+        query_resp = session.get(EXAM_QUERY_URL_FALLBACK, timeout=30)
+        query_resp.raise_for_status()
+    check_session_valid(query_resp)
+
+    params = extract_exam_query_params(query_resp.text)
+    headers = {"Referer": EXAM_QUERY_URL}
+    list_resp = session.post(EXAM_URL, data=params, headers=headers, timeout=30)
+    list_resp.raise_for_status()
+    check_session_valid(list_resp)
+    return list_resp.text
+
+
 def parse_schedule(html: str) -> list[dict[str, Any]]:
     soup = BeautifulSoup(html, "html.parser")
     courses: list[dict[str, Any]] = []
@@ -240,26 +303,60 @@ def parse_schedule(html: str) -> list[dict[str, Any]]:
 
     return courses
 
-    return courses
-
 
 def parse_exams(html: str) -> list[dict[str, Any]]:
     soup = BeautifulSoup(html, "html.parser")
     exams: list[dict[str, Any]] = []
 
-    table = soup.find("table", {"id": "dataList"})
+    table = soup.find("table", {"id": "dataList"}) or soup.find("table", class_=re.compile(r"(?:table|datelist|dataList)", re.I))
     if not table:
         return exams
 
-    for row in table.find_all("tr")[1:]:
+    rows = table.find_all("tr")
+    if not rows:
+        return exams
+
+    header_cells = rows[0].find_all(["th", "td"])
+    headers = [cell.get_text(" ", strip=True).replace("\xa0", "") for cell in header_cells]
+
+    def find_col(*keywords: str) -> int | None:
+        for idx, header in enumerate(headers):
+            if all(keyword in header for keyword in keywords):
+                return idx
+        return None
+
+    course_idx = find_col("课程", "名称") or find_col("课程")
+    time_idx = find_col("考试", "时间") or find_col("时间")
+    location_idx = find_col("考场") or find_col("地点") or find_col("校区")
+    seat_idx = find_col("座位") or find_col("座号")
+
+    if course_idx is None:
+        course_idx = 5 if len(headers) > 5 else 0
+    if time_idx is None:
+        time_idx = 7 if len(headers) > 7 else 1
+    if location_idx is None:
+        location_idx = 8 if len(headers) > 8 else 2
+    if seat_idx is None:
+        seat_idx = 9 if len(headers) > 9 else None
+
+    for row in rows[1:]:
         cells = row.find_all("td")
-        if len(cells) < 4:
+        if not cells:
             continue
+        values = [cell.get_text(" ", strip=True).replace("\xa0", " ").strip() for cell in cells]
+        if course_idx >= len(values) or time_idx >= len(values):
+            continue
+
+        course_name = values[course_idx]
+        exam_time = values[time_idx]
+        if not course_name or course_name in {"课程名称", "&nbsp;"}:
+            continue
+
         exams.append({
-            "course_name": cells[0].get_text(strip=True),
-            "exam_time": cells[1].get_text(strip=True),
-            "exam_location": cells[2].get_text(strip=True),
-            "seat_number": cells[3].get_text(strip=True) if len(cells) > 3 else "",
+            "course_name": course_name,
+            "exam_time": exam_time,
+            "exam_location": values[location_idx] if location_idx < len(values) else "",
+            "seat_number": values[seat_idx] if seat_idx is not None and seat_idx < len(values) else "",
         })
 
     return exams
@@ -350,6 +447,32 @@ def save_current_week(user_id: str, current_week: int | None) -> None:
     schedule_state_path(user_id).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def first_monday(year: int, month: int) -> date:
+    day = date(year, month, 1)
+    offset = (7 - day.weekday()) % 7
+    return date(year, month, 1 + offset)
+
+
+def infer_current_week_from_term(term_id: str | None, today: date | None = None) -> int | None:
+    if not term_id:
+        return None
+    match = re.match(r"(\d{4})-(\d{4})-(\d)", term_id)
+    if not match:
+        return None
+    start_year = int(match.group(1))
+    end_year = int(match.group(2))
+    term_no = match.group(3)
+    term_start = first_monday(start_year, 9) if term_no == "1" else first_monday(end_year, 3)
+    current_date = today or date.today()
+    delta = (current_date - term_start).days
+    if delta < 0:
+        return None
+    week = delta // 7 + 1
+    if 1 <= week <= 30:
+        return week
+    return None
+
+
 def load_cached_current_week(user_id: str) -> int | None:
     path = schedule_state_path(user_id)
     if not path.is_file():
@@ -401,6 +524,58 @@ def week_matches(week_info: str, current_week: int) -> bool:
     return False
 
 
+def build_week_schedule(user_id: str, target_week: int) -> dict[str, Any]:
+    conn = db_connect()
+    schedule_rows = conn.execute(
+        "SELECT course_name, teacher, week_info, weekday, section, classroom FROM schedules "
+        "WHERE user_id = ? ORDER BY weekday ASC, section ASC, id ASC",
+        (user_id,),
+    ).fetchall()
+    conn.close()
+
+    weekdays = [
+        {"weekday": day, "weekday_name": f"周{label}", "courses": []}
+        for day, label in enumerate(["一", "二", "三", "四", "五", "六", "日"], start=1)
+    ]
+
+    for row in schedule_rows:
+        if not week_matches(row["week_info"], target_week):
+            continue
+        weekday = row["weekday"]
+        if not weekday or weekday < 1 or weekday > 7:
+            continue
+        weekdays[weekday - 1]["courses"].append({
+            "course_name": row["course_name"],
+            "teacher": row["teacher"],
+            "section": row["section"],
+            "classroom": row["classroom"],
+            "week_info": row["week_info"],
+            "weekday": weekday,
+        })
+
+    return {"target_week": target_week, "weekdays": weekdays}
+
+
+def cmd_list_week(user_id: str, offset_weeks: int = 0) -> None:
+    current_week = get_current_week(user_id)
+    if current_week <= 0:
+        emit(True, "当前教学周未知", {
+            "current_week": None,
+            "target_week": None,
+            "offset_weeks": offset_weeks,
+            "weekdays": [],
+        })
+
+    target_week = current_week + offset_weeks
+    if target_week < 1:
+        target_week = 1
+
+    data = build_week_schedule(user_id, target_week)
+    data["current_week"] = current_week
+    data["offset_weeks"] = offset_weeks
+    emit(True, "执行成功", data)
+
+
 def cmd_list_today(user_id: str) -> None:
     conn = db_connect()
     today = date.today()
@@ -431,12 +606,21 @@ def cmd_list_today(user_id: str) -> None:
         (user_id, today_str),
     ).fetchall()
 
+    month_prefix = today.strftime("%Y-%m")
+    exam_rows = conn.execute(
+        "SELECT id, course_name, exam_time, exam_location, seat_number FROM exams "
+        "WHERE user_id = ? AND exam_time LIKE ? ORDER BY exam_time ASC, id ASC",
+        (user_id, f"%{month_prefix}%"),
+    ).fetchall()
+
     conn.close()
     emit(True, "执行成功", {
         "date": today_str,
         "weekday": weekday,
         "current_week": current_week if current_week > 0 else None,
         "courses": courses,
+        "schedules": courses,
+        "exams": [dict(r) for r in exam_rows],
         "tasks": [dict(r) for r in task_rows],
     })
 
@@ -642,6 +826,7 @@ def fetch_schedule_html_with_browser(user_id: str) -> str:
                 raise RuntimeError("schedule page redirected to CAS login; run bind_webvpn_interactive.sh again; current_url=" + driver.current_url)
 
         html = driver.page_source
+        save_current_week(user_id, infer_current_week_from_term(extract_schedule_params(html).get("xnxq01id")))
         if "timetable" not in html and "xskb_print.do" not in html:
             raise RuntimeError(
                 "schedule page did not load timetable; current_url="
@@ -690,6 +875,7 @@ def cmd_sync_schedule(user_id: str) -> None:
     try:
         session = load_session(user_id)
         html, params = fetch_schedule_html(session)
+        save_current_week(user_id, infer_current_week_from_term(params.get("xnxq01id")))
         
         # If timetable found in HTML, use it
         if "timetable" in html or "kbcontent" in html:
@@ -715,17 +901,15 @@ def cmd_sync_schedule(user_id: str) -> None:
 
 def cmd_sync_exam(user_id: str) -> None:
     session = load_session(user_id)
-    response = session.get(EXAM_URL, timeout=30)
-    response.raise_for_status()
-    check_session_valid(response)
-    exams = parse_exams(response.text)
+    html = fetch_exam_html(session)
+    exams = parse_exams(html)
     save_exams(user_id, exams)
     emit(True, f"synced {len(exams)} exams", {"count": len(exams)})
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("action", choices=["sync_schedule", "sync_exam", "list_today", "detect_changes"])
+    parser.add_argument("action", choices=["sync_schedule", "sync_exam", "list_today", "list_next_week", "detect_changes"])
     parser.add_argument("user_id")
     args = parser.parse_args()
 
@@ -736,6 +920,8 @@ def main() -> None:
             cmd_sync_exam(args.user_id)
         elif args.action == "list_today":
             cmd_list_today(args.user_id)
+        elif args.action == "list_next_week":
+            cmd_list_week(args.user_id, 1)
         else:
             cmd_detect_changes(args.user_id)
     except Exception as exc:

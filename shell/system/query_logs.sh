@@ -18,7 +18,7 @@ fi
 
 shell_db_init
 
-result_json=$(python3 - "$DATABASE_PATH" "$user_id" "$module" "$level" "$limit" <<'PY'
+result_json=$(shell_common_python - "$DATABASE_PATH" "$user_id" "$module" "$level" "$limit" <<'PY'
 import json
 import sqlite3
 import sys
@@ -45,7 +45,8 @@ if level:
 
 where_sql = " AND ".join(where_clauses)
 sql = f"""
-SELECT id, user_id, module, level, message, detail, created_at
+SELECT id, user_id, module, level, message, detail,
+       strftime('%Y-%m-%d %H:%M:%S', created_at, 'localtime') AS created_at
 FROM logs
 WHERE {where_sql}
 ORDER BY created_at DESC

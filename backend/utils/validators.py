@@ -19,6 +19,10 @@ def validate_feedback_type(feedback_type):
         "seat",
         "notification",
         "frontend",
+        "task",
+        "ui",
+        "feature",
+        "bug",
         "other",
     ]
 

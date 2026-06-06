@@ -59,7 +59,7 @@
         </div>
         <div class="col-md-4">
             <div class="card p-3">
-                <h6 class="fw-bold mb-3">近期考试</h6>
+                <h6 class="fw-bold mb-3">本月考试</h6>
                 <div id="examList">
                     <p class="text-muted">加载中...</p>
                 </div>
@@ -72,6 +72,16 @@
                     <p class="text-muted">加载中...</p>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <div class="card p-3 mt-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="fw-bold mb-0">下周课表 <small id="nextWeekText" class="text-muted ms-2"></small></h6>
+            <button class="btn btn-sm btn-outline-primary" id="refreshNextWeekBtn">刷新下周课表</button>
+        </div>
+        <div id="nextWeekSchedule" class="row g-3">
+            <p class="text-muted mb-0">加载中...</p>
         </div>
     </div>
 
