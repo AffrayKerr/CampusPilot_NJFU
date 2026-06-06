@@ -1,0 +1,98 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>意见反馈</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body style="background: linear-gradient(to bottom, #e6f7e6, #ffffff); min-height: 100vh; margin:0;">
+
+<!-- 导航栏 -->
+<nav class="px-4" style="background: linear-gradient(to bottom, #165DFF, #90caf9); height: 80px;">
+    <div class="d-flex justify-content-between align-items-center h-100">
+        <a href="dashboard.html" class="text-white text-decoration-none fs-2 fw-bold">校园服务平台</a>
+        <div class="d-flex gap-4">
+            <a href="login.html" class="nav-link-style">登录</a>
+            <a href="dashboard.html" class="nav-link-style">首页</a>
+            <a href="schedule.html" class="nav-link-style">课表</a>
+            <a href="tasks.html" class="nav-link-style">DDL任务</a>
+            <a href="seat.html" class="nav-link-style">座位预约</a>
+            <a href="logs.html" class="nav-link-style">操作日志</a>
+            <a href="profile.html" class="nav-link-style">个人中心</a>
+            <a href="feedback.html" class="nav-link-style">意见反馈</a>
+        </div>
+    </div>
+</nav>
+
+<style>
+.nav-link-style {
+    color: #ffffff;
+    text-decoration: none;
+    padding: 10px 16px;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    font-weight: 500;
+    font-size: 15px;
+}
+.nav-link-style:hover {
+    background-color: #0D47A1;
+    color: white !important;
+}
+</style>
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-7">
+            <div class="card p-4 shadow-sm">
+                <h3 class="text-center mb-4">意见反馈</h3>
+                
+                <div class="mb-3">
+                    <label class="form-label">反馈类型</label>
+                    <select id="type" class="form-control">
+                        <option>功能问题</option>
+                        <option>界面优化</option>
+                        <option>使用建议</option>
+                        <option>其他</option>
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">联系方式</label>
+                    <input id="contact" type="text" class="form-control" placeholder="请输入手机号/邮箱">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">反馈内容</label>
+                    <textarea id="content" rows="5" class="form-control" placeholder="请详细描述你的问题或建议"></textarea>
+                </div>
+
+                <button onclick="submitFeedback()" class="btn btn-primary w-100 py-2">提交反馈</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function submitFeedback() {
+    let contact = document.getElementById("contact").value.trim();
+    let content = document.getElementById("content").value.trim();
+
+    if (contact === "" || content === "") {
+        alert("请填写完整信息再提交！");
+        return;
+    }
+
+    // ✅ 提交成功提示
+    alert("提交成功！感谢你的反馈，我们会尽快处理。");
+    
+    // 清空表单
+    document.getElementById("contact").value = "";
+    document.getElementById("content").value = "";
+}
+</script>
+
+<script type="module" src="../static/js/feedback.js"></script>
+</body>
+</html>
