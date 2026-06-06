@@ -48,6 +48,26 @@ def create_app():
     def dashboard():
         return render_template("dashboard.html")
 
+    @app.route("/schedule")
+    def schedule():
+        return render_template("schedule.html")
+
+    @app.route("/tasks")
+    def tasks():
+        return render_template("tasks.html")
+
+    @app.route("/seat")
+    def seat():
+        return render_template("seat.html")
+
+    @app.route("/logs")
+    def logs():
+        return render_template("logs.html")
+
+    @app.route("/profile")
+    def profile():
+        return render_template("profile.html")
+
     @app.route("/feedback")
     def feedback():
         return render_template("feedback.html")

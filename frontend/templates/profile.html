@@ -1,85 +1,141 @@
-
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>个人中心</title>
+    <title>个人中心 - 校园服务平台</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .nav-link-style {
+            color: #ffffff;
+            text-decoration: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            font-size: 15px;
+        }
+        .nav-link-style:hover { background-color: #0D47A1; color: white !important; }
+        .stat-card { text-align: center; padding: 16px; border-radius: 10px; background: #f0f7ff; }
+        .stat-num { font-size: 28px; font-weight: bold; color: #165DFF; }
+        .stat-label { font-size: 13px; color: #666; }
+    </style>
 </head>
 <body style="background: linear-gradient(to bottom, #e6f7e6, #ffffff); min-height: 100vh; margin:0;">
 
 <nav class="px-4" style="background: linear-gradient(to bottom, #165DFF, #90caf9); height: 80px;">
     <div class="d-flex justify-content-between align-items-center h-100">
-        <a href="dashboard.html" class="text-white text-decoration-none fs-2 fw-bold">校园服务平台</a>
+        <a href="/dashboard" class="text-white text-decoration-none fs-2 fw-bold">校园服务平台</a>
         <div class="d-flex gap-4">
-            <a href="login.html" class="nav-link-style">登录</a>
-            <a href="dashboard.html" class="nav-link-style">首页</a>
-            <a href="schedule.html" class="nav-link-style">课表</a>
-            <a href="tasks.html" class="nav-link-style">DDL任务</a>
-            <a href="seat.html" class="nav-link-style">座位预约</a>
-            <a href="logs.html" class="nav-link-style">操作日志</a>
-            <a href="profile.html" class="nav-link-style">个人中心</a>
-            <a href="feedback.html" class="nav-link-style">意见反馈</a>
+            <a href="/" class="nav-link-style">登录</a>
+            <a href="/dashboard" class="nav-link-style">首页</a>
+            <a href="/schedule" class="nav-link-style">课表</a>
+            <a href="/tasks" class="nav-link-style">DDL任务</a>
+            <a href="/seat" class="nav-link-style">座位预约</a>
+            <a href="/logs" class="nav-link-style">操作日志</a>
+            <a href="/profile" class="nav-link-style">个人中心</a>
+            <a href="/feedback" class="nav-link-style">意见反馈</a>
         </div>
     </div>
 </nav>
 
-<style>
-.nav-link-style {
-    color: #ffffff;
-    text-decoration: none;
-    padding: 10px 16px;
-    border-radius: 8px;
-    transition: all 0.3s ease;
-    font-weight: 500;
-    font-size: 15px;
-}
-.nav-link-style:hover {
-    background-color: #0D47A1;
-    color: white !important;
-}
-</style>
+<div class="container mt-4 pb-5">
+    <div class="row g-4">
 
-<div class="container mt-5">
-    <div class="row justify-content-center">
-        <div class="col-md-6">
-            <div class="card p-4">
-                <h3 class="text-center mb-4">个人信息设置</h3>
-                <div class="mb-3">
-                    <label>姓名</label>
-                    <input type="text" class="form-control" id="userName" value="学生用户">
+        <!-- 统计卡片 -->
+        <div class="col-12">
+            <div class="row g-3">
+                <div class="col-6 col-md-3">
+                    <div class="stat-card">
+                        <div class="stat-num" id="statCourses">-</div>
+                        <div class="stat-label">课程数</div>
+                    </div>
                 </div>
-                <div class="mb-3">
-                    <label>学号</label>
-                    <input type="text" class="form-control" id="userId" value="202400101">
+                <div class="col-6 col-md-3">
+                    <div class="stat-card">
+                        <div class="stat-num" id="statExams">-</div>
+                        <div class="stat-label">考试数</div>
+                    </div>
                 </div>
-                <div class="mb-3">
-                    <label>手机号</label>
-                    <input type="tel" class="form-control" id="userPhone" value="13800138000">
+                <div class="col-6 col-md-3">
+                    <div class="stat-card">
+                        <div class="stat-num" id="statTasks">-</div>
+                        <div class="stat-label">DDL 任务</div>
+                    </div>
                 </div>
-                <div class="mb-3">
-                    <label>邮箱</label>
-                    <input type="email" class="form-control" id="userMail" value="stu@school.com">
-                </div>
-
-                <button type="button" class="btn btn-dark w-100" id="saveBtn">保存修改</button>
-                <div class="mt-3">
-                    <a href="dashboard.html" class="btn btn-outline-primary w-100">返回首页</a>
-                    <a href="logs.html" class="btn btn-outline-secondary w-100 mt-2">查看操作日志</a>
-                    <a href="feedback.html" class="btn btn-info w-100 mt-2">我的反馈记录/提交新反馈</a>
+                <div class="col-6 col-md-3">
+                    <div class="stat-card">
+                        <div class="stat-num" id="statSeatSuccess">-</div>
+                        <div class="stat-label">抢座成功</div>
+                    </div>
                 </div>
             </div>
         </div>
+
+        <!-- 账号信息 -->
+        <div class="col-md-6">
+            <div class="card p-4 h-100">
+                <h5 class="mb-3">账号信息</h5>
+                <div class="mb-3">
+                    <label class="form-label">用户名</label>
+                    <input type="text" class="form-control" id="username" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">角色</label>
+                    <p class="form-control-plaintext fw-bold" id="userRole">-</p>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">邮箱</label>
+                    <input type="email" class="form-control" id="email" placeholder="用于邮件提醒">
+                </div>
+                <div class="mb-2">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="enableEmail">
+                        <label class="form-check-label" for="enableEmail">启用邮件提醒</label>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="enableDesktop" checked>
+                        <label class="form-check-label" for="enableDesktop">启用桌面提醒</label>
+                    </div>
+                </div>
+                <button class="btn btn-primary w-100" id="saveProfileBtn">保存修改</button>
+                <button class="btn btn-outline-danger w-100 mt-2" id="logoutBtn">退出登录</button>
+            </div>
+        </div>
+
+        <!-- 校园网账号绑定 -->
+        <div class="col-md-6">
+            <div class="card p-4 h-100">
+                <h5 class="mb-3">校园网账号绑定</h5>
+                <p class="text-muted" style="font-size:13px;">绑定后系统可自动同步课表、考试安排及执行图书馆抢座。</p>
+                <div class="mb-2">
+                    <label class="form-label">绑定状态</label><br>
+                    <span id="campusStatus" class="badge bg-secondary">未绑定</span>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">校园网账号（学号）</label>
+                    <input type="text" class="form-control" id="campusAccount" placeholder="请输入学号">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">校园网密码</label>
+                    <input type="password" class="form-control" id="campusPassword" placeholder="密码将加密存储">
+                </div>
+                <button class="btn btn-success w-100" id="bindBtn">绑定 / 更新校园网账号</button>
+                <button class="btn btn-outline-warning w-100 mt-2" id="unbindBtn" style="display:none;">解绑校园网账号</button>
+
+                <hr>
+                <div class="d-flex gap-2">
+                    <a href="/logs" class="btn btn-outline-secondary flex-fill">操作日志</a>
+                    <a href="/feedback" class="btn btn-outline-info flex-fill">意见反馈</a>
+                </div>
+            </div>
+        </div>
+
     </div>
 </div>
 
-<script>
-document.getElementById('saveBtn').onclick = function(){
-    alert("个人信息保存成功");
-}
-</script>
-
-<script type="module" src="../static/js/profile.js"></script>
+<script type="module" src="/static/profile.js"></script>
 </body>
 </html>

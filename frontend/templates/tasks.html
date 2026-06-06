@@ -1,72 +1,77 @@
-
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DDL任务管理</title>
+    <title>DDL任务管理 - 校园服务平台</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .nav-link-style {
+            color: #ffffff;
+            text-decoration: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            font-size: 15px;
+        }
+        .nav-link-style:hover { background-color: #0D47A1; color: white !important; }
+    </style>
 </head>
 <body style="background: linear-gradient(to bottom, #e6f7e6, #ffffff); min-height: 100vh; margin:0;">
 
 <nav class="px-4" style="background: linear-gradient(to bottom, #165DFF, #90caf9); height: 80px;">
     <div class="d-flex justify-content-between align-items-center h-100">
-        <a href="dashboard.html" class="text-white text-decoration-none fs-2 fw-bold">校园服务平台</a>
+        <a href="/dashboard" class="text-white text-decoration-none fs-2 fw-bold">校园服务平台</a>
         <div class="d-flex gap-4">
-            <a href="login.html" class="nav-link-style">登录</a>
-            <a href="dashboard.html" class="nav-link-style">首页</a>
-            <a href="schedule.html" class="nav-link-style">课表</a>
-            <a href="tasks.html" class="nav-link-style">DDL任务</a>
-            <a href="seat.html" class="nav-link-style">座位预约</a>
-            <a href="logs.html" class="nav-link-style">操作日志</a>
-            <a href="profile.html" class="nav-link-style">个人中心</a>
-            <a href="feedback.html" class="nav-link-style">意见反馈</a>
+            <a href="/" class="nav-link-style">登录</a>
+            <a href="/dashboard" class="nav-link-style">首页</a>
+            <a href="/schedule" class="nav-link-style">课表</a>
+            <a href="/tasks" class="nav-link-style">DDL任务</a>
+            <a href="/seat" class="nav-link-style">座位预约</a>
+            <a href="/logs" class="nav-link-style">操作日志</a>
+            <a href="/profile" class="nav-link-style">个人中心</a>
+            <a href="/feedback" class="nav-link-style">意见反馈</a>
         </div>
     </div>
 </nav>
 
-<style>
-.nav-link-style {
-    color: #ffffff;
-    text-decoration: none;
-    padding: 10px 16px;
-    border-radius: 8px;
-    transition: all 0.3s ease;
-    font-weight: 500;
-    font-size: 15px;
-}
-.nav-link-style:hover {
-    background-color: #0D47A1;
-    color: white !important;
-}
-</style>
-
-<div class="container mt-5">
+<div class="container mt-4 pb-5">
     <h3 class="text-center mb-4">DDL任务清单管理</h3>
+
     <div class="card p-4 mb-4">
         <h5>新增任务</h5>
         <div class="row g-3">
             <div class="col-md-4">
                 <label>任务名称</label>
-                <input type="text" id="taskName" class="form-control" placeholder="输入作业/考试名称">
+                <input type="text" id="taskTitle" class="form-control" placeholder="输入作业/考试名称">
             </div>
             <div class="col-md-3">
-                <label>截止日期</label>
-                <input type="date" id="taskDate" class="form-control">
+                <label>截止时间</label>
+                <input type="datetime-local" id="taskDeadline" class="form-control">
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label>优先级</label>
-                <select id="taskLevel" class="form-select">
-                    <option>普通</option>
-                    <option>重要</option>
-                    <option>紧急</option>
+                <select id="taskPriority" class="form-select">
+                    <option value="low">普通</option>
+                    <option value="medium" selected>重要</option>
+                    <option value="high">紧急</option>
                 </select>
             </div>
-            <div class="col-md-2 d-flex align-items-end">
-                <button class="btn btn-dark w-100" id="addTask">添加任务</button>
+            <div class="col-md-3">
+                <label>分类</label>
+                <input type="text" id="taskCategory" class="form-control" placeholder="如：作业/项目">
+            </div>
+            <div class="col-12">
+                <label>备注</label>
+                <textarea id="taskNote" class="form-control" rows="2" placeholder="任务详情（可选）"></textarea>
+            </div>
+            <div class="col-12">
+                <button class="btn btn-dark w-100" id="addTaskBtn">添加任务</button>
             </div>
         </div>
     </div>
+
     <div class="card p-4">
         <h5>已有任务列表</h5>
         <table class="table table-hover" id="taskTable">
@@ -75,51 +80,21 @@
                     <th>任务名称</th>
                     <th>截止时间</th>
                     <th>优先级</th>
+                    <th>状态</th>
                     <th>操作</th>
                 </tr>
             </thead>
             <tbody>
-                <tr>
-                    <td>高数作业</td>
-                    <td>2026-06-10</td>
-                    <td>重要</td>
-                    <td>
-                        <button class="btn btn-sm btn-primary edit">修改</button>
-                        <button class="btn btn-sm btn-danger del">删除</button>
-                    </td>
-                </tr>
+                <tr><td colspan="5" class="text-center text-muted">加载中...</td></tr>
             </tbody>
         </table>
     </div>
+
     <div class="mt-3">
-        <a href="dashboard.html" class="btn btn-outline-primary">返回首页</a>
+        <a href="/dashboard" class="btn btn-outline-primary">返回首页</a>
     </div>
 </div>
 
-<script>
-const addBtn = document.getElementById('addTask');
-const table = document.getElementById('taskTable').querySelector('tbody');
-addBtn.onclick = ()=>{
-    let name = document.getElementById('taskName').value;
-    let date = document.getElementById('taskDate').value;
-    let level = document.getElementById('taskLevel').value;
-    if(!name||!date){alert('请完善任务信息');return;}
-    let tr = document.createElement('tr');
-    tr.innerHTML = `<td>${name}</td><td>${date}</td><td>${level}</td><td><button class="btn btn-sm btn-primary edit">修改</button><button class="btn btn-sm btn-danger del">删除</button></td>`;
-    table.appendChild(tr);
-    document.getElementById('taskName').value='';
-    document.getElementById('taskDate').value='';
-}
-table.onclick=(e)=>{
-    if(e.target.classList.contains('del')){
-        e.target.closest('tr').remove();
-    }else if(e.target.classList.contains('edit')){
-        alert('修改弹窗：可修改当前任务信息');
-    }
-}
-</script>
-
-<script type="module" src="../static/js/tasks.js"></script>
-
+<script type="module" src="/static/tasks.js"></script>
 </body>
 </html>

@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -6,9 +5,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>首页 - 校园服务平台</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .nav-link-style {
+            color: #ffffff;
+            text-decoration: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            font-size: 15px;
+        }
+        .nav-link-style:hover { background-color: #0D47A1; color: white !important; }
+        .home-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: calc(100vh - 80px);
+            padding: 20px;
+        }
+        .stat-badge { font-size: 13px; padding: 4px 10px; border-radius: 20px; }
+    </style>
 </head>
 <body style="
-    background-image: url('bg2.jpg');
+    background-image: url('/static/bg2.jpg');
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
@@ -16,62 +35,54 @@
     margin: 0;
 ">
 
-<!-- 导航栏（最新美化版） -->
 <nav class="px-4" style="background: linear-gradient(to bottom, #165DFF, #90caf9); height: 80px;">
     <div class="d-flex justify-content-between align-items-center h-100">
-        <a href="dashboard.html" class="text-white text-decoration-none fs-2 fw-bold">校园服务平台</a>
-        <div class="d-flex gap-4">
-            <a href="login.html" class="nav-link-style">登录</a>
-            <a href="dashboard.html" class="nav-link-style">首页</a>
-            <a href="schedule.html" class="nav-link-style">课表</a>
-            <a href="tasks.html" class="nav-link-style">DDL任务</a>
-            <a href="seat.html" class="nav-link-style">座位预约</a>
-            <a href="logs.html" class="nav-link-style">操作日志</a>
-            <a href="profile.html" class="nav-link-style">个人中心</a>
-            <a href="feedback.html" class="nav-link-style">意见反馈</a>
+        <a href="/dashboard" class="text-white text-decoration-none fs-2 fw-bold">校园服务平台</a>
+        <div class="d-flex gap-4 align-items-center">
+            <span id="campusBindStatus" class="badge bg-secondary stat-badge"></span>
+            <span id="userRole" class="badge bg-warning text-dark" style="display:none;">管理员</span>
+            <a href="/" class="nav-link-style">登录</a>
+            <a href="/dashboard" class="nav-link-style">首页</a>
+            <a href="/schedule" class="nav-link-style">课表</a>
+            <a href="/tasks" class="nav-link-style">DDL任务</a>
+            <a href="/seat" class="nav-link-style">座位预约</a>
+            <a href="/logs" class="nav-link-style">操作日志</a>
+            <a href="/profile" class="nav-link-style">个人中心</a>
+            <a href="/feedback" class="nav-link-style">意见反馈</a>
         </div>
     </div>
 </nav>
 
-<style>
-.nav-link-style {
-    color: #ffffff;
-    text-decoration: none;
-    padding: 10px 16px;
-    border-radius: 8px;
-    transition: all 0.3s ease;
-    font-weight: 500;
-    font-size: 15px;
-}
-.nav-link-style:hover {
-    background-color: #0D47A1;
-    color: white !important;
-}
-
-.home-container {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: calc(100vh - 80px);
-    padding: 20px;
-}
-</style>
-
-<!-- 淡绿色 → 白色 渐变卡片 -->
 <div class="home-container">
     <div class="card p-5 shadow-lg text-center" style="width: 700px; background: linear-gradient(to bottom, #e6f7e6, #ffffff); border:none;">
-        <h1 class="mb-4 fw-bold">欢迎使用校园服务平台</h1>
-        <p class="fs-5 text-muted mb-4">一站式服务：课表查询、座位预约、任务管理、个人中心</p>
-        
+        <h1 class="mb-2 fw-bold">欢迎，<span id="welcomeUser">同学</span></h1>
+        <p class="fs-5 text-muted mb-3">一站式服务：课表查询、座位预约、任务管理、个人中心</p>
+
+        <div class="d-flex justify-content-center gap-4 mb-4">
+            <div class="text-center">
+                <div class="fs-3 fw-bold text-primary" id="todayCourseCount">-</div>
+                <div class="text-muted" style="font-size:13px;">今日课程</div>
+            </div>
+            <div class="text-center">
+                <div class="fs-3 fw-bold text-warning" id="todayTaskCount">-</div>
+                <div class="text-muted" style="font-size:13px;">待办任务</div>
+            </div>
+            <div class="text-center">
+                <div class="fs-3 fw-bold text-danger" id="todayExamCount">-</div>
+                <div class="text-muted" style="font-size:13px;">近期考试</div>
+            </div>
+        </div>
+
         <div class="d-flex flex-wrap justify-content-center gap-3">
-            <a href="schedule.html" class="btn btn-primary btn-lg px-4">查看课表</a>
-            <a href="seat.html" class="btn btn-success btn-lg px-4">座位预约</a>
-            <a href="tasks.html" class="btn btn-warning btn-lg px-4">DDL任务</a>
-            <a href="profile.html" class="btn btn-secondary btn-lg px-4">个人中心</a>
-            <a href="feedback.html" class="btn btn-info btn-lg px-4">意见反馈</a>
+            <a href="/schedule" class="btn btn-primary btn-lg px-4">查看课表</a>
+            <a href="/seat" class="btn btn-success btn-lg px-4">座位预约</a>
+            <a href="/tasks" class="btn btn-warning btn-lg px-4">DDL任务</a>
+            <a href="/profile" class="btn btn-secondary btn-lg px-4">个人中心</a>
+            <a href="/feedback" class="btn btn-info btn-lg px-4">意见反馈</a>
         </div>
     </div>
 </div>
-<script type="module" src="../static/js/dashboard.js"></script>
+
+<script type="module" src="/static/dashboard.js"></script>
 </body>
 </html>
