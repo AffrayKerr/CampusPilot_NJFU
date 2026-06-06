@@ -38,7 +38,7 @@ export async function request(url, opts = {}, silent = false) {
             return null
         }
 
-        return data.data
+        return data.data ?? true
     } catch (e) {
         if (!silent) {
             showErr("网络请求失败：" + e.message)

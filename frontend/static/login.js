@@ -31,6 +31,21 @@ window.onload = () => {
                 return
             }
 
+            if (username.length < 3 || username.length > 32) {
+                showErr("用户名长度须在 3 ~ 32 位之间")
+                return
+            }
+
+            if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
+                showErr("用户名只能包含字母、数字、下划线 _ 或连字符 -")
+                return
+            }
+
+            if (password.length < 6) {
+                showErr("密码至少需要 6 位")
+                return
+            }
+
             const data = await requestWithoutToken("/account/register", {
                 method: "POST",
                 body: JSON.stringify({ username, password, email })

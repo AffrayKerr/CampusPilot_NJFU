@@ -76,6 +76,9 @@
         <div id="username-group" class="mb-4">
             <label class="form-label fs-5">用户名</label>
             <input type="text" id="username" class="form-control form-control-lg" placeholder="请输入用户名">
+            <div id="username-hint" class="form-text" style="display:none;">
+                3 ~ 32 位，只允许字母、数字、下划线 <code>_</code>、连字符 <code>-</code>
+            </div>
         </div>
 
         <div id="email-group" class="mb-4" style="display:none;">
@@ -100,6 +103,7 @@
 <script>
 function switchTab(tab) {
     const emailGroup = document.getElementById("email-group")
+    const usernameHint = document.getElementById("username-hint")
     const loginBtn = document.getElementById("loginBtn")
     const registerBtn = document.getElementById("registerBtn")
     const tabLogin = document.getElementById("tabLogin")
@@ -107,12 +111,14 @@ function switchTab(tab) {
 
     if (tab === "login") {
         emailGroup.style.display = "none"
+        if (usernameHint) usernameHint.style.display = "none"
         loginBtn.style.display = "block"
         registerBtn.style.display = "none"
         tabLogin.classList.add("active")
         tabRegister.classList.remove("active")
     } else {
         emailGroup.style.display = "block"
+        if (usernameHint) usernameHint.style.display = "block"
         loginBtn.style.display = "none"
         registerBtn.style.display = "block"
         tabLogin.classList.remove("active")
