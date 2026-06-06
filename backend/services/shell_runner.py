@@ -37,8 +37,8 @@ def run_shell(script_path, args=None, timeout=30):
     command = [bash_cmd, str(full_script_path)] + [str(arg) for arg in args]
 
     env = os.environ.copy()
-    env["DATABASE_PATH"] = str(PROJECT_ROOT / "database" / "campuspilot.db")
-    env["PROJECT_ROOT"] = str(PROJECT_ROOT)
+    env["DATABASE_PATH"] = str(PROJECT_ROOT / "database" / "campuspilot.db").replace("\\", "/")
+    env["PROJECT_ROOT"] = str(PROJECT_ROOT).replace("\\", "/")
 
     try:
         result = subprocess.run(

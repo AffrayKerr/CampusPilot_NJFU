@@ -4,8 +4,22 @@ set -eu
 # shellcheck source=./env.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/env.sh"
 
+shell_common_python() {
+  if [[ -n "${SHELL_AUTH_PYTHON:-}" ]]; then
+    echo "$SHELL_AUTH_PYTHON"
+  elif [[ -x "$PROJECT_ROOT/.venv/Scripts/python.exe" ]]; then
+    echo "$PROJECT_ROOT/.venv/Scripts/python.exe"
+  elif [[ -x "$PROJECT_ROOT/.venv/bin/python" ]]; then
+    echo "$PROJECT_ROOT/.venv/bin/python"
+  elif command -v python3 >/dev/null 2>&1; then
+    echo "python3"
+  else
+    echo "python"
+  fi
+}
+
 shell_db_init() {
-  python3 - "$DATABASE_PATH" <<'PY'
+  "$(shell_common_python)" - "$DATABASE_PATH" <<'PY'
 import sqlite3
 import sys
 from pathlib import Path
@@ -21,7 +35,7 @@ PY
 shell_db_query() {
   local sql="$1"
   shift || true
-  python3 - "$DATABASE_PATH" "$sql" "$@" <<'PY'
+  "$(shell_common_python)" - "$DATABASE_PATH" "$sql" "$@" <<'PY'
 import json
 import sqlite3
 import sys
@@ -41,7 +55,7 @@ PY
 shell_db_execute() {
   local sql="$1"
   shift || true
-  python3 - "$DATABASE_PATH" "$sql" "$@" <<'PY'
+  "$(shell_common_python)" - "$DATABASE_PATH" "$sql" "$@" <<'PY'
 import sqlite3
 import sys
 

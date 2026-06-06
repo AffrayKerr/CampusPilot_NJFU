@@ -84,26 +84,25 @@ def interactive_status():
         except OSError:
             pass
 
+    if status_content and status_content.startswith("{"):
+        import json as _json
+        try:
+            parsed = _json.loads(status_content)
+            parsed["data"] = parsed.get("data") or {}
+            if parsed.get("success"):
+                parsed["data"]["status"] = "completed"
+            else:
+                parsed["data"]["status"] = "failed"
+            return jsonify(parsed)
+        except _json.JSONDecodeError:
+            pass
+
     if in_progress:
         return jsonify({
             "success": True,
             "message": "Browser login in progress, please complete login in the browser window",
             "data": {"status": "in_progress"},
         })
-
-    if status_content and status_content.startswith("{"):
-        import json as _json
-        try:
-            parsed = _json.loads(status_content)
-            if parsed.get("success"):
-                parsed["data"] = parsed.get("data") or {}
-                parsed["data"]["status"] = "completed"
-            else:
-                parsed["data"] = parsed.get("data") or {}
-                parsed["data"]["status"] = "failed"
-            return jsonify(parsed)
-        except _json.JSONDecodeError:
-            pass
 
     result = run_shell("shell/auth/check_session.sh", [g.current_user["id"]], timeout=20)
     if result.get("success"):

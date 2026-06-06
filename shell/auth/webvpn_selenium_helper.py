@@ -1,32 +1,30 @@
 #!/usr/bin/env python3
-"""Interactive WebVPN login helper using Selenium.
-
-This script opens a browser window and waits for the user to manually
-complete the WebVPN login process, then automatically extracts cookies.
-"""
-
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
+import os
+import sqlite3
 import sys
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 try:
+    from cryptography.fernet import Fernet
     from selenium import webdriver
-    from selenium.webdriver.chrome.options import Options
-    from selenium.webdriver.support.ui import WebDriverWait
     from selenium.common.exceptions import TimeoutException, WebDriverException
+    from selenium.webdriver.chrome.options import Options
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
 except ImportError:
-    print(json.dumps({
-        "success": False,
-        "message": "selenium is not installed. Run: pip install selenium",
-        "data": None
-    }, ensure_ascii=False))
+    print(json.dumps({"success": False, "message": "selenium/cryptography is not installed", "data": None}, ensure_ascii=False))
     sys.exit(1)
 
 WEBVPN_BASE = "https://webvpn.njfu.edu.cn"
+LIBRARY_SSO_URL = "https://webvpn.njfu.edu.cn/rump_frontend/connect/?target=Library&id=12"
 JWC_MAIN_URL = (
     "https://webvpn.njfu.edu.cn/webvpn/LjIwMS4xNjkuMjE4LjE2OC4xNjc=/"
     "LjIwMy4xNzIuMjIyLjE3Mi45OC4xNjMuMjA2LjE1My4yMTguOTYuMTU3LjE1Ni4yMTkuMTAwLjE1NC4yMTA="
@@ -36,8 +34,7 @@ TIMEOUT_SECONDS = 600
 
 
 def emit(success: bool, message: str, data: Any = None, code: int = 0) -> None:
-    payload = {"success": success, "message": message, "data": data}
-    print(json.dumps(payload, ensure_ascii=False))
+    print(json.dumps({"success": success, "message": message, "data": data}, ensure_ascii=False))
     sys.exit(code)
 
 
@@ -45,10 +42,14 @@ def project_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def database_path() -> Path:
+    return Path(os.environ.get("DATABASE_PATH", project_root() / "database" / "campuspilot.db"))
+
+
 def user_runtime_dir(user_id: str) -> Path:
-    runtime_dir = project_root() / "runtime" / "users" / user_id
-    runtime_dir.mkdir(parents=True, exist_ok=True)
-    return runtime_dir
+    path = project_root() / "runtime" / "users" / user_id
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def cookie_path(user_id: str) -> Path:
@@ -61,6 +62,38 @@ def chrome_profile_path(user_id: str) -> Path:
     return path
 
 
+def write_status_file(path: Path | None, payload: dict[str, Any]) -> None:
+    if path:
+        path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+
+def derive_key(raw_key: str) -> bytes:
+    return base64.urlsafe_b64encode(hashlib.sha256(raw_key.encode("utf-8")).digest())
+
+
+def decrypt_password(cipher_text: str) -> str:
+    raw_key = os.environ.get("CAMPUSPILOT_ENCRYPTION_KEY") or os.environ.get("CAMPUSPILOT_SECRET_KEY") or "campuspilot-dev-secret-key"
+    return Fernet(derive_key(raw_key)).decrypt(cipher_text.encode("utf-8")).decode("utf-8") if cipher_text else ""
+
+
+def load_bound_account(user_id: str) -> tuple[str, str]:
+    conn = sqlite3.connect(database_path())
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute(
+            "SELECT campus_account, campus_password_encrypted FROM campus_accounts WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        raise RuntimeError("campus account is not bound")
+    password = decrypt_password(row["campus_password_encrypted"])
+    if not row["campus_account"] or not password:
+        raise RuntimeError("campus account or password is empty")
+    return row["campus_account"], password
+
+
 def setup_driver(user_id: str) -> webdriver.Chrome:
     options = Options()
     options.add_argument(f"--user-data-dir={chrome_profile_path(user_id)}")
@@ -68,186 +101,189 @@ def setup_driver(user_id: str) -> webdriver.Chrome:
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option("useAutomationExtension", False)
-
     try:
         driver = webdriver.Chrome(options=options)
-        driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
-            "source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-        })
+        driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"})
         return driver
-    except WebDriverException as e:
-        if "chromedriver" in str(e).lower() or "chrome" in str(e).lower():
-            emit(False, "Chrome or ChromeDriver not found. Please install Chrome browser.", None, 1)
-        else:
-            emit(False, f"Failed to start browser: {str(e)}", None, 1)
+    except WebDriverException as exc:
+        emit(False, f"Failed to start browser: {exc}", None, 1)
 
 
-def wait_for_webvpn_login(driver: webdriver.Chrome, timeout: int) -> bool:
+def find_first(driver: webdriver.Chrome, selectors: list[tuple[str, str]]) -> Any | None:
+    for by, value in selectors:
+        try:
+            items = driver.find_elements(by, value)
+            if items:
+                return items[0]
+        except Exception:
+            pass
+    return None
+
+
+def submit_cas_login(driver: webdriver.Chrome, username: str, password: str) -> None:
+    user_el = WebDriverWait(driver, 30).until(lambda d: find_first(d, [(By.ID, "username"), (By.NAME, "username")]))
+    pwd_el = find_first(driver, [(By.ID, "password"), (By.NAME, "password")])
+    if pwd_el is None:
+        raise RuntimeError("CAS password input not found")
+    user_el.clear(); user_el.send_keys(username)
+    pwd_el.clear(); pwd_el.send_keys(password)
+    btn = find_first(driver, [(By.ID, "login-submit"), (By.CSS_SELECTOR, "button[type='submit']"), (By.CSS_SELECTOR, "input[type='submit']")])
+    btn.click() if btn is not None else pwd_el.submit()
+
+
+def wait_webvpn_ready(driver: webdriver.Chrome, timeout: int) -> None:
+    WebDriverWait(driver, timeout).until(lambda d: (
+        "authserver/login" not in d.current_url
+        and d.current_url not in (WEBVPN_BASE, WEBVPN_BASE + "/")
+        and "webvpn.njfu.edu.cn" in d.current_url
+    ))
+
+
+def auto_webvpn_login(driver: webdriver.Chrome, username: str, password: str) -> None:
+    driver.get(WEBVPN_BASE)
+    time.sleep(2)
+    if "authserver" in driver.current_url or find_first(driver, [(By.ID, "username"), (By.NAME, "username")]):
+        print(json.dumps({"status": "auto_login", "username": username}, ensure_ascii=False), file=sys.stderr)
+        submit_cas_login(driver, username, password)
+    wait_webvpn_ready(driver, TIMEOUT_SECONDS)
+
+
+def safe_get(driver: webdriver.Chrome, url: str, timeout: int = 60) -> None:
     try:
-        WebDriverWait(driver, timeout).until(
-            lambda d: (
-                "/portal/" in d.current_url or
-                "htmlx" in d.current_url or
-                (
-                    "webvpn.njfu.edu.cn" in d.current_url
-                    and "authserver/login" not in d.current_url
-                    and d.current_url != WEBVPN_BASE
-                    and d.current_url != WEBVPN_BASE + "/"
-                )
-            )
-        )
-        return True
-    except TimeoutException:
-        return False
-
-
-def warmup_jwc_session(driver: webdriver.Chrome) -> None:
-    """Navigate to JWC through WebVPN so browser completes SSO and establishes JWC session cookies."""
-    driver.get(JWC_MAIN_URL)
-    try:
-        WebDriverWait(driver, 60).until(
-            lambda d: (
-                ("jsxsd" in d.current_url or "htmlx" in d.current_url)
-                and "uia.njfu.edu.cn" not in d.current_url
-                and "authserver/login" not in d.current_url
-            )
-        )
+        driver.set_page_load_timeout(timeout)
+        driver.get(url)
     except TimeoutException:
         pass
+
+
+def click_rump_redirect(driver: webdriver.Chrome) -> None:
+    if "rump_frontend" not in driver.current_url:
+        return
+    link = find_first(driver, [(By.ID, "url"), (By.CSS_SELECTOR, "a#url")])
+    if link:
+        link.click()
+        time.sleep(2)
+
+
+def click_seat_entry(driver: webdriver.Chrome) -> None:
+    before = set(driver.window_handles)
+    entry = find_first(driver, [
+        (By.CSS_SELECTOR, ".group-item-img-2"),
+        (By.XPATH, "//*[contains(text(), '座位预约')]"),
+        (By.XPATH, "//*[contains(text(), '空间预约')]"),
+        (By.XPATH, "//a[contains(@href, 'seat') or contains(@href, 'reserve')]"),
+    ])
+    if not entry:
+        return
+    entry.click(); time.sleep(2)
+    new_handles = list(set(driver.window_handles) - before)
+    if new_handles:
+        driver.switch_to.window(new_handles[-1])
+    elif driver.window_handles:
+        driver.switch_to.window(driver.window_handles[-1])
+    time.sleep(3)
+
+
+def warmup_sessions(driver: webdriver.Chrome) -> None:
+    safe_get(driver, JWC_MAIN_URL, 60)
     time.sleep(2)
+    safe_get(driver, LIBRARY_SSO_URL, 60)
+    time.sleep(2)
+    click_rump_redirect(driver)
+    click_seat_entry(driver)
+    print(json.dumps({"status": "resource_warmup", "current_url": driver.current_url}, ensure_ascii=False), file=sys.stderr)
+
+
+def current_cookie_domain(driver: webdriver.Chrome) -> str:
+    host = urlparse(driver.current_url).hostname or "webvpn.njfu.edu.cn"
+    return ".njfu.edu.cn" if host.endswith("njfu.edu.cn") else host
 
 
 def extract_cookies(driver: webdriver.Chrome) -> list[dict[str, str]]:
+    all_cookies: list[dict[str, Any]] = []
     try:
-        result = driver.execute_cdp_cmd("Network.getAllCookies", {})
-        all_cookies = result.get("cookies", [])
+        all_cookies.extend(driver.execute_cdp_cmd("Network.getAllCookies", {}).get("cookies", []))
     except Exception:
-        all_cookies = driver.get_cookies()
+        pass
+    try:
+        all_cookies.extend(driver.get_cookies())
+    except Exception:
+        pass
+    try:
+        domain = current_cookie_domain(driver)
+        for part in str(driver.execute_script("return document.cookie || '';" )).split(";"):
+            if "=" in part:
+                name, value = part.strip().split("=", 1)
+                all_cookies.append({"name": name, "value": value, "domain": domain, "path": "/"})
+    except Exception:
+        pass
 
-    njfu_cookies = []
+    result: list[dict[str, str]] = []
     seen = set()
     for c in all_cookies:
-        domain = c.get("domain", "")
-        name = c.get("name", "")
-        if "njfu.edu.cn" not in domain:
+        name, domain = c.get("name", ""), c.get("domain", "") or "webvpn.njfu.edu.cn"
+        if not name or "njfu.edu.cn" not in domain:
             continue
         key = (name, domain, c.get("path", "/"))
         if key in seen:
             continue
         seen.add(key)
-        njfu_cookies.append({
-            "name": name,
-            "value": c.get("value", ""),
-            "domain": domain,
-            "path": c.get("path", "/"),
-        })
-
-    print(json.dumps({
-        "status": "cookies_extracted",
-        "count": len(njfu_cookies),
-        "names": [c["name"] for c in njfu_cookies],
-    }, ensure_ascii=False), file=sys.stderr)
-
-    return njfu_cookies
+        result.append({"name": name, "value": c.get("value", ""), "domain": domain, "path": c.get("path", "/")})
+    print(json.dumps({"status": "cookies_extracted", "count": len(result), "names": [c["name"] for c in result]}, ensure_ascii=False), file=sys.stderr)
+    return result
 
 
 def save_cookies(cookies: list[dict[str, str]], path: Path) -> None:
-    lines = []
-    for c in cookies:
-        domain = c.get("domain", "")
-        c_path = c.get("path", "/")
-        lines.append(f"{c['name']}={c['value']}|{domain}|{c_path}")
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    path.write_text("\n".join(f"{c['name']}={c['value']}|{c.get('domain', '')}|{c.get('path', '/')}" for c in cookies) + "\n", encoding="utf-8")
 
 
 def update_database(user_id: str, cookie_file: Path) -> None:
-    import os
-    import sqlite3 as _sqlite3
-
-    env_path = os.environ.get("DATABASE_PATH")
-    if env_path:
-        db_path = env_path
-    else:
-        db_path = str(Path(__file__).resolve().parents[2] / "database" / "campuspilot.db")
-
-    # Update campus_accounts in its own transaction so it commits independently
-    conn = _sqlite3.connect(db_path)
+    conn = sqlite3.connect(database_path())
     try:
-        conn.execute(
-            """
+        conn.execute("""
             UPDATE campus_accounts
             SET webvpn_cookie_path = ?, session_valid = 1,
                 last_login_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
             WHERE user_id = ?
-            """,
-            (str(cookie_file), user_id),
-        )
+        """, (str(cookie_file), user_id))
         conn.commit()
     finally:
         conn.close()
-
-    # Insert session record in a separate transaction — failure here won't roll back the UPDATE above
-    conn2 = _sqlite3.connect(db_path)
+    conn = sqlite3.connect(database_path())
     try:
-        conn2.execute(
-            """
+        conn.execute("""
             INSERT INTO sessions (user_id, session_type, cookie_path, is_valid, last_checked_at)
             VALUES (?, 'webvpn', ?, 1, CURRENT_TIMESTAMP)
-            """,
-            (user_id, str(cookie_file)),
-        )
-        conn2.commit()
+        """, (user_id, str(cookie_file)))
+        conn.commit()
     except Exception:
         pass
     finally:
-        conn2.close()
+        conn.close()
 
 
 def main() -> None:
     if len(sys.argv) < 2:
         emit(False, "user_id is required", None, 1)
-
     user_id = sys.argv[1]
+    status_file = Path(sys.argv[2]) if len(sys.argv) >= 3 else None
     cookie_file = cookie_path(user_id)
-
     driver = setup_driver(user_id)
-
     try:
-        driver.get(WEBVPN_BASE)
-
-        print(json.dumps({
-            "status": "waiting",
-            "message": f"Please complete login in the browser window (timeout: {TIMEOUT_SECONDS}s)",
-            "current_url": driver.current_url
-        }, ensure_ascii=False), file=sys.stderr)
-
-        if not wait_for_webvpn_login(driver, TIMEOUT_SECONDS):
-            emit(False, f"login timeout after {TIMEOUT_SECONDS} seconds", None, 1)
-
-        time.sleep(1)
-
-        warmup_jwc_session(driver)
-
+        username, password = load_bound_account(user_id)
+        auto_webvpn_login(driver, username, password)
+        warmup_sessions(driver)
         cookies = extract_cookies(driver)
-
         if not cookies:
             emit(False, "no cookies found after login", None, 1)
-
         save_cookies(cookies, cookie_file)
         update_database(user_id, cookie_file)
-
+        success_data = {"status": "completed", "cookie_count": len(cookies), "cookie_file": str(cookie_file), "chrome_profile": str(chrome_profile_path(user_id)), "final_url": driver.current_url}
+        write_status_file(status_file, {"success": True, "message": "interactive login completed", "data": success_data})
         time.sleep(10)
-
-        emit(True, "interactive login completed", {
-            "cookie_count": len(cookies),
-            "cookie_file": str(cookie_file),
-            "chrome_profile": str(chrome_profile_path(user_id)),
-            "final_url": driver.current_url,
-        }, 0)
-
-    except Exception as e:
-        emit(False, f"unexpected error: {str(e)}", None, 1)
-
+        emit(True, "interactive login completed", success_data, 0)
+    except Exception as exc:
+        emit(False, f"unexpected error: {exc}", None, 1)
     finally:
         try:
             driver.quit()

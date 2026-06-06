@@ -45,16 +45,19 @@ rm -f "$status_file" "$log_file"
 echo "starting" > "$status_file"
 
 script_path="$SCRIPT_DIR/webvpn_selenium_helper.py"
+status_file_arg="$status_file"
 log_file_arg="$log_file"
 
 # Convert Unix-style paths to Windows format for Windows .exe
 if [[ "$SELENIUM_PYTHON" == *.exe ]] && command -v cygpath >/dev/null 2>&1; then
   SELENIUM_PYTHON="$(cygpath -w "$SELENIUM_PYTHON")"
   script_path="$(cygpath -w "$script_path")"
+  status_file_arg="$(cygpath -w "$status_file")"
   log_file_arg="$(cygpath -w "$log_file")"
 elif [[ "$SELENIUM_PYTHON" == *.exe ]] && grep -qi microsoft /proc/version 2>/dev/null && command -v wslpath >/dev/null 2>&1; then
   SELENIUM_PYTHON="$(wslpath -w "$SELENIUM_PYTHON")"
   script_path="$(wslpath -w "$script_path")"
+  status_file_arg="$(wslpath -w "$status_file")"
   log_file_arg="$(wslpath -w "$log_file")"
 fi
 
@@ -62,9 +65,8 @@ DB_PATH="$DATABASE_PATH"
 
 (
   export DATABASE_PATH="$DB_PATH"
-  if result="$("$SELENIUM_PYTHON" "$script_path" "$user_id" 2>"$log_file_arg")"; then
+  if result="$("$SELENIUM_PYTHON" "$script_path" "$user_id" "$status_file_arg" 2>"$log_file_arg")"; then
     echo "$result" > "$status_file"
-    "$AUTH_PYTHON" "$SCRIPT_DIR/webvpn_client.py" check "$user_id" >/dev/null 2>&1 || true
   else
     if [[ -n "$result" && "$result" == *'"success"'* ]]; then
       echo "$result" > "$status_file"
@@ -73,7 +75,7 @@ DB_PATH="$DATABASE_PATH"
     fi
   fi
   rm -f "$pid_file"
-) &
+) >/dev/null 2>&1 &
 
 bg_pid=$!
 echo "$bg_pid" > "$pid_file"

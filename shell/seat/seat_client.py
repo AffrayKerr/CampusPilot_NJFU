@@ -22,11 +22,12 @@ TOKEN_TTL_SECONDS = 6 * 3600
 
 # Room IDs by floor label (from library system HAR analysis)
 FLOOR_ROOM_IDS: dict[str, list[int]] = {
-    "1F": [100500001],
-    "2F": [100500002],
-    "3F": [100500003],
-    "4F": [100500004, 100500005],
-    "5F": [100500006],
+    "2F": [100455344, 100455346],
+    "3F": [100455350, 100455352, 100455354, 111488386],
+    "4F": [100455356, 111488388],
+    "5F": [100455358],
+    "6F": [100455360],
+    "7F": [106658017, 111488396],
 }
 ALL_ROOM_IDS = [rid for ids in FLOOR_ROOM_IDS.values() for rid in ids]
 
@@ -42,7 +43,7 @@ def project_root() -> Path:
 
 
 def database_path() -> Path:
-    return Path(os.environ.get("DATABASE_PATH", project_root() / "database" / "campus_pilot.db"))
+    return Path(os.environ.get("DATABASE_PATH", project_root() / "database" / "campuspilot.db"))
 
 
 def user_runtime_dir(user_id: str) -> Path:
@@ -143,6 +144,79 @@ def get_library_token(user_id: str) -> tuple[str, int]:
     return token, app_acc_no
 
 
+def _find_first(driver: Any, selectors: list[tuple[str, str]]) -> Any | None:
+    from selenium.webdriver.common.by import By
+    by_map = {"css": By.CSS_SELECTOR, "xpath": By.XPATH, "id": By.ID}
+    for kind, value in selectors:
+        try:
+            items = driver.find_elements(by_map[kind], value)
+            if items:
+                return items[0]
+        except Exception:
+            pass
+    return None
+
+
+def _click_library_redirect_and_seat_entry(driver: Any) -> None:
+    if "rump_frontend" in driver.current_url:
+        link = _find_first(driver, [("id", "url"), ("css", "a#url")])
+        if link:
+            link.click()
+            time.sleep(2)
+    before = set(driver.window_handles)
+    entry = _find_first(driver, [
+        ("css", ".group-item-img-2"),
+        ("xpath", "//*[contains(text(), '座位预约')]"),
+        ("xpath", "//*[contains(text(), '空间预约')]"),
+        ("xpath", "//a[contains(@href, 'seat') or contains(@href, 'reserve')]"),
+    ])
+    if entry:
+        entry.click()
+        time.sleep(2)
+        new_handles = list(set(driver.window_handles) - before)
+        if new_handles:
+            driver.switch_to.window(new_handles[-1])
+        elif driver.window_handles:
+            driver.switch_to.window(driver.window_handles[-1])
+        time.sleep(3)
+
+
+def _extract_library_auth_from_browser(driver: Any, timeout: int) -> tuple[str, int]:
+    deadline = time.time() + timeout
+    token = ""
+    app_acc_no = 0
+    user_info_paths = ["/ic-web/auth/userInfo", "/ic-web/auth/user"]
+    while time.time() < deadline:
+        try:
+            token = driver.execute_script("return localStorage.getItem('token') || localStorage.getItem('TOKEN') || '';" ) or ""
+        except Exception:
+            token = ""
+        for path in user_info_paths:
+            url = f"{LIBRARY_BASE}{path}?vpn-12-libseat.njfu.edu.cn"
+            raw = driver.execute_async_script(
+                """
+                var done = arguments[0];
+                var url = arguments[1];
+                var token = arguments[2] || '';
+                fetch(url, {headers: {token: token, Accept: 'application/json'}})
+                  .then(r => r.json()).then(d => done(JSON.stringify(d))).catch(e => done(null));
+                """,
+                url,
+                token,
+            )
+            if not raw:
+                continue
+            data = json.loads(raw)
+            payload = data.get("data") if isinstance(data.get("data"), dict) else data
+            token = token or payload.get("token") or ""
+            acc_no = payload.get("accNo") or payload.get("appAccNo") or data.get("accNo") or data.get("appAccNo")
+            if token and acc_no:
+                app_acc_no = int(acc_no)
+                return token, app_acc_no
+        time.sleep(2)
+    raise RuntimeError(f"library token/appAccNo not found; current_url={driver.current_url}")
+
+
 def _fetch_token_via_browser(user_id: str) -> tuple[str, int]:
     try:
         from selenium import webdriver
@@ -191,16 +265,9 @@ def _fetch_token_via_browser(user_id: str) -> tuple[str, int]:
         except TimeoutException:
             pass
 
-        try:
-            WebDriverWait(driver, timeout).until(lambda d: bool(d.execute_script("return localStorage.getItem('token')")))
-        except TimeoutException:
-            raise RuntimeError(f"library SSO timed out; current_url={driver.current_url}")
-
-        token = driver.execute_script("return localStorage.getItem('token')")
-        if not token:
-            raise RuntimeError("library token not found in localStorage")
-
-        app_acc_no = _get_app_acc_no_from_browser(driver, token, timeout)
+        time.sleep(2)
+        _click_library_redirect_and_seat_entry(driver)
+        token, app_acc_no = _extract_library_auth_from_browser(driver, timeout)
         print(json.dumps({"status": "library_token_acquired", "app_acc_no": app_acc_no}, ensure_ascii=False), file=sys.stderr, flush=True)
         return token, app_acc_no
     finally:
@@ -284,17 +351,20 @@ def _get_dev_id(session: requests.Session, floor: str, seat_no: str, reserve_dat
 def reserve_seat(session: requests.Session, app_acc_no: int, seat_no: str, floor: str, reserve_date: str, start_time: str, end_time: str) -> dict[str, Any]:
     dev_id = _get_dev_id(session, floor, seat_no, reserve_date)
     url = f"{LIBRARY_BASE}/ic-web/reserve?vpn-12-libseat.njfu.edu.cn"
+    begin_ms = int(datetime.strptime(f"{reserve_date} {start_time}", "%Y-%m-%d %H:%M").timestamp() * 1000)
+    end_ms = int(datetime.strptime(f"{reserve_date} {end_time}", "%Y-%m-%d %H:%M").timestamp() * 1000)
     body = {
         "sysKind": 8, "appAccNo": app_acc_no, "memberKind": 1, "resvMember": [app_acc_no],
-        "resvBeginTime": f"{reserve_date} {start_time}:00", "resvEndTime": f"{reserve_date} {end_time}:00",
+        "resvBeginTime": begin_ms, "resvEndTime": end_ms,
         "testName": "", "captcha": "", "resvProperty": 0, "resvDev": [dev_id], "memo": "",
     }
     resp = session.post(url, json=body, timeout=30)
     resp.raise_for_status()
     result = resp.json()
     if result.get("code") == 0:
-        return {"success": True, "message": result.get("message", "预约成功"), "uuid": result.get("data", {}).get("uuid")}
-    return {"success": False, "message": result.get("message", "预约失败"), "uuid": None}
+        data = result.get("data") or {}
+        return {"success": True, "message": result.get("message", "预约成功"), "uuid": data.get("uuid"), "resv_id": data.get("resvId")}
+    return {"success": False, "message": result.get("message", "预约失败"), "uuid": None, "resv_id": None}
 
 
 def _get_current_reservation_uuid(session: requests.Session, app_acc_no: int, seat_no: str) -> str | None:
