@@ -39,12 +39,15 @@ def run_shell(script_path, args=None, timeout=30):
     env = os.environ.copy()
     env["DATABASE_PATH"] = str(PROJECT_ROOT / "database" / "campuspilot.db").replace("\\", "/")
     env["PROJECT_ROOT"] = str(PROJECT_ROOT).replace("\\", "/")
+    env["PYTHONIOENCODING"] = "utf-8"
 
     try:
         result = subprocess.run(
             command,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
             cwd=str(PROJECT_ROOT),
             env=env,
@@ -66,6 +69,13 @@ def run_shell(script_path, args=None, timeout=30):
     stderr = result.stderr.strip()
 
     if result.returncode != 0:
+        if stdout:
+            try:
+                parsed = json.loads(stdout)
+                if isinstance(parsed, dict) and "success" in parsed:
+                    return parsed
+            except json.JSONDecodeError:
+                pass
         return {
             "success": False,
             "message": stderr or "Shell script execution failed",

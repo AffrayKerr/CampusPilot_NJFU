@@ -48,7 +48,7 @@ def database_path() -> Path:
     env_path = os.environ.get("DATABASE_PATH")
     if env_path:
         return Path(env_path)
-    return project_root() / "database" / "campus_pilot.db"
+    return project_root() / "database" / "campuspilot.db"
 
 
 def user_runtime_dir(user_id: str) -> Path:
@@ -100,7 +100,9 @@ def load_session(user_id: str) -> requests.Session:
             session.cookies.set(name, value, domain=".njfu.edu.cn")
 
     # Visit JWC main page first to establish JWC internal session via WebVPN SSO
-    session.get(JWC_MAIN, timeout=30, allow_redirects=True)
+    main_resp = session.get(JWC_MAIN, timeout=30, allow_redirects=True)
+    if main_resp.ok:
+        save_current_week(user_id, parse_current_week(main_resp.text))
 
     return session
 
@@ -304,7 +306,69 @@ def save_exams(user_id: str, exams: list[dict[str, Any]]) -> None:
     conn.close()
 
 
-def get_current_week() -> int:
+def schedule_state_path(user_id: str) -> Path:
+    path = user_runtime_dir(user_id)
+    path.mkdir(parents=True, exist_ok=True)
+    return path / "schedule_state.json"
+
+
+def parse_current_week(html: str) -> int | None:
+    text = BeautifulSoup(html, "html.parser").get_text(" ", strip=True)
+    patterns = [
+        r"教学\s*第\s*(\d{1,2})\s*周",
+        r"当前\s*教学\s*周\s*[:：]?\s*(\d{1,2})",
+        r"当前周\s*[:：]?\s*(\d{1,2})",
+        r"第\s*(\d{1,2})\s*周",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            week = int(match.group(1))
+            if 1 <= week <= 30:
+                return week
+    return None
+
+
+def read_current_week_from_browser(driver: Any, timeout: int = 12) -> int | None:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        week = parse_current_week(driver.page_source)
+        if week:
+            return week
+        time.sleep(1)
+    return parse_current_week(driver.page_source)
+
+
+def save_current_week(user_id: str, current_week: int | None) -> None:
+    if not current_week:
+        return
+    payload = {
+        "current_week": current_week,
+        "updated_at": datetime.now().isoformat(timespec="seconds"),
+        "source": "jwc_home",
+    }
+    schedule_state_path(user_id).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def load_cached_current_week(user_id: str) -> int | None:
+    path = schedule_state_path(user_id)
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        week = int(data.get("current_week") or 0)
+        if 1 <= week <= 30:
+            return week
+    except Exception:
+        return None
+    return None
+
+
+def get_current_week(user_id: str | None = None) -> int:
+    if user_id:
+        cached_week = load_cached_current_week(user_id)
+        if cached_week:
+            return cached_week
     start_str = os.environ.get("SEMESTER_START_DATE", "")
     if not start_str:
         return -1
@@ -342,7 +406,7 @@ def cmd_list_today(user_id: str) -> None:
     today = date.today()
     weekday = today.weekday() + 1
     today_str = today.isoformat()
-    current_week = get_current_week()
+    current_week = get_current_week(user_id)
 
     schedule_rows = conn.execute(
         "SELECT course_name, teacher, week_info, section, classroom FROM schedules "
@@ -398,7 +462,9 @@ def load_cookie_pairs(user_id: str) -> list[tuple[str, str, str]]:
         if not line or line.startswith("#"):
             continue
         if "|" in line:
-            name_value, domain = line.split("|", 1)
+            parts = line.split("|")
+            name_value = parts[0]
+            domain = parts[1] if len(parts) > 1 and parts[1] else ".njfu.edu.cn"
             if "=" in name_value:
                 name, value = name_value.split("=", 1)
                 pairs.append((name, value, domain))
@@ -507,6 +573,7 @@ def fetch_schedule_html_with_browser(user_id: str) -> str:
 
         current = driver.current_url
         print(json.dumps({"status": "jwc_warmup_done", "current_url": current}, ensure_ascii=False), file=sys.stderr, flush=True)
+        save_current_week(user_id, read_current_week_from_browser(driver, timeout=12))
 
         if "authserver/login" in current:
             if "casLoginForm" in driver.page_source:
@@ -629,7 +696,8 @@ def cmd_sync_schedule(user_id: str) -> None:
             courses = parse_schedule(html)
             if courses:
                 save_schedules(user_id, courses)
-                emit(True, f"synced {len(courses)} courses", {"count": len(courses), "source": "requests"})
+                current_week = load_cached_current_week(user_id)
+                emit(True, f"synced {len(courses)} courses", {"count": len(courses), "source": "requests", "current_week": current_week})
             # If parse failed but HTML looks valid, fall back to browser
         
         # If timetable not found, fall back to browser
@@ -641,7 +709,8 @@ def cmd_sync_schedule(user_id: str) -> None:
     html = fetch_schedule_html_with_browser(user_id)
     courses = parse_schedule(html)
     save_schedules(user_id, courses)
-    emit(True, f"synced {len(courses)} courses", {"count": len(courses), "source": "selenium"})
+    current_week = load_cached_current_week(user_id)
+    emit(True, f"synced {len(courses)} courses", {"count": len(courses), "source": "selenium", "current_week": current_week})
 
 
 def cmd_sync_exam(user_id: str) -> None:

@@ -26,7 +26,7 @@ shell_env_ensure_user_runtime_dir "$user_id" >/dev/null
 
 if ! auth_check_json="$("$AUTH_PYTHON" "$SCRIPT_DIR/../auth/webvpn_client.py" check "$user_id" 2>&1)"; then
   shell_log_write WARNING schedule "webvpn session invalid before schedule sync" "user_id=$user_id result=$auth_check_json" "$user_id"
-  shell_response_json false "webvpn session invalid; please run auth login first" null
+  shell_response_json false "WebVPN 会话无效，请先在个人中心重新绑定/登录校园网账号" null
   exit 1
 fi
 
@@ -34,7 +34,11 @@ shell_log_write INFO schedule "syncing schedule" "user_id=$user_id" "$user_id"
 
 script_path="$SCRIPT_DIR/schedule_scraper.py"
 if [[ "$SCHEDULE_PYTHON" == *.exe ]]; then
-  script_path="$(wslpath -w "$script_path")"
+  if command -v cygpath >/dev/null 2>&1; then
+    script_path="$(cygpath -w "$script_path")"
+  elif command -v wslpath >/dev/null 2>&1; then
+    script_path="$(wslpath -w "$script_path")"
+  fi
 fi
 
 sync_timeout="${SCHEDULE_SYNC_TIMEOUT:-90}"

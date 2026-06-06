@@ -47,7 +47,7 @@ def database_path() -> Path:
     env_path = os.environ.get("DATABASE_PATH")
     if env_path:
         return Path(env_path)
-    return project_root() / "database" / "campus_pilot.db"
+    return project_root() / "database" / "campuspilot.db"
 
 
 def runtime_dir(user_id: str) -> Path:
@@ -126,10 +126,13 @@ def load_cookies(session: requests.Session, path: Path) -> None:
         if not line or line.startswith("#"):
             continue
         if "|" in line:
-            name_value, domain = line.split("|", 1)
+            parts = line.split("|")
+            name_value = parts[0]
+            domain = parts[1] if len(parts) > 1 and parts[1] else "webvpn.njfu.edu.cn"
+            path_value = parts[2] if len(parts) > 2 and parts[2] else "/"
             if "=" in name_value:
                 name, value = name_value.split("=", 1)
-                session.cookies.set(name, value, domain=domain)
+                session.cookies.set(name, value, domain=domain, path=path_value)
         elif "=" in line:
             name, value = line.split("=", 1)
             session.cookies.set(name, value, domain="webvpn.njfu.edu.cn")

@@ -38,13 +38,15 @@
 
 <div class="container mt-4 pb-5">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h3 class="mb-0">课表 / 日程</h3>
+        <h3 class="mb-0">课表 / 日程 <small id="currentWeekText" class="text-muted fs-6 ms-2"></small></h3>
         <div class="d-flex gap-2">
             <button class="btn btn-primary" id="syncScheduleBtn">同步课表</button>
             <button class="btn btn-warning" id="syncExamBtn">同步考试</button>
             <button class="btn btn-outline-secondary" id="detectChangesBtn">检测变动</button>
         </div>
     </div>
+
+    <div id="scheduleStatus" class="alert d-none mb-3" role="status"></div>
 
     <div class="row g-4">
         <div class="col-md-4">
