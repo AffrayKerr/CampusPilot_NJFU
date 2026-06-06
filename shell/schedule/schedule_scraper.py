@@ -408,6 +408,44 @@ def load_cookie_pairs(user_id: str) -> list[tuple[str, str, str]]:
     return pairs
 
 
+def _inject_cookies_into_browser(driver: Any, user_id: str, timeout: int) -> None:
+    """Inject fresh cookies from webvpn.cookie file into the browser session.
+    
+    This ensures that even if the chrome profile has an expired session,
+    the latest tokens from the cookie file take precedence.
+    """
+    try:
+        from selenium.common.exceptions import TimeoutException
+    except ImportError:
+        return
+
+    cookie_pairs = load_cookie_pairs(user_id)
+    if not cookie_pairs:
+        return
+
+    print(json.dumps({"status": "injecting_fresh_cookies", "count": len(cookie_pairs)}, ensure_ascii=False), file=sys.stderr, flush=True)
+    
+    driver.get("https://webvpn.njfu.edu.cn")
+    try:
+        driver.execute_script("return document.readyState")
+    except TimeoutException:
+        pass
+
+    for name, value, domain in cookie_pairs:
+        cookie_dict = {
+            "name": name,
+            "value": value,
+            "domain": domain.strip(),
+            "path": "/",
+            "secure": True,
+            "httpOnly": False,
+        }
+        try:
+            driver.add_cookie(cookie_dict)
+        except Exception as e:
+            print(json.dumps({"status": "cookie_inject_warning", "cookie": name, "error": str(e)}, ensure_ascii=False), file=sys.stderr, flush=True)
+
+
 def fetch_schedule_html_with_browser(user_id: str) -> str:
     try:
         from selenium import webdriver
@@ -445,6 +483,10 @@ def fetch_schedule_html_with_browser(user_id: str) -> str:
     try:
         driver.set_page_load_timeout(timeout)
         print(json.dumps({"status": "using_auth_chrome_profile", "profile": str(profile_path)}, ensure_ascii=False), file=sys.stderr, flush=True)
+
+        # Inject latest cookies from webvpn.cookie file into the browser so that
+        # even if the chrome profile has an expired session, the fresh token wins.
+        _inject_cookies_into_browser(driver, user_id, timeout)
 
         print(json.dumps({"status": "warming_jwc", "url": JWC_MAIN}, ensure_ascii=False), file=sys.stderr, flush=True)
         try:
