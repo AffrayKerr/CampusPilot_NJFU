@@ -1,0 +1,78 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 全局主题色：蓝绿校园风 */
+:root {
+    --blue-main: #165DFF;
+    --green-main: #36d399;
+    --green-light: #f0fdf4;
+    --gray-text: #333333;
+}
+
+/* 页面通用背景 */
+.page-green-bg {
+    background: linear-gradient(180deg, var(--green-light), #ffffff);
+    min-height: 100vh;
+}
+
+/* 导航菜单通用类 */
+@layer components {
+    .nav-item {
+        @apply px-4 py-2 rounded-lg transition-all duration-300 text-white no-underline inline-block;
+    }
+    .nav-item:hover {
+        @apply bg-[#0D47A1];
+    }
+
+    /* 全局卡片样式（所有页面共用） */
+    .card-box {
+        @apply bg-white rounded-xl shadow-md p-5 border border-gray-100 hover:shadow-lg transition-all duration-300;
+    }
+
+    /* 主按钮 */
+    .btn-primary {
+        @apply bg-[#165DFF] text-white px-5 py-2 rounded-lg hover:bg-[#0D47A1] transition-all;
+    }
+    /* 成功绿色按钮 */
+    .btn-success {
+        @apply bg-[#36d399] text-white px-5 py-2 rounded-lg hover:bg-emerald-500 transition-all;
+    }
+    /* 取消灰色按钮 */
+    .btn-gray {
+        @apply bg-gray-400 text-white px-5 py-2 rounded-lg hover:bg-gray-500 transition-all;
+    }
+
+    /* 输入框统一样式 */
+    .input-item {
+        @apply border border-gray-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:border-[#165DFF];
+    }
+}
+
+/* 清除默认边距 */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    color: var(--gray-text);
+}
+
+/* 座位状态标签 */
+.seat-free {
+    @apply bg-green-100 text-green-700 px-2 py-1 rounded;
+}
+.seat-used {
+    @apply bg-gray-200 text-gray-600 px-2 py-1 rounded;
+}
+.seat-select {
+    @apply bg-blue-100 text-blue-700 px-2 py-1 rounded;
+}
+
+/* 日志状态配色 */
+.log-success {color:#10b981;}
+.log-warn {color:#f59e0b;}
+.log-error {color:#ef4444;}

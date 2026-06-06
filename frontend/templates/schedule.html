@@ -1,0 +1,104 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>课表查询</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body style="background: linear-gradient(to bottom, #e6f7e6, #ffffff); min-height: 100vh; margin:0;">
+
+<nav class="px-4" style="background: linear-gradient(to bottom, #165DFF, #90caf9); height: 80px;">
+    <div class="d-flex justify-content-between align-items-center h-100">
+        <a href="dashboard.html" class="text-white text-decoration-none fs-2 fw-bold">校园服务平台</a>
+        <div class="d-flex gap-4">
+            <a href="login.html" class="nav-link-style">登录</a>
+            <a href="dashboard.html" class="nav-link-style">首页</a>
+            <a href="schedule.html" class="nav-link-style">课表</a>
+            <a href="tasks.html" class="nav-link-style">DDL任务</a>
+            <a href="seat.html" class="nav-link-style">座位预约</a>
+            <a href="logs.html" class="nav-link-style">操作日志</a>
+            <a href="profile.html" class="nav-link-style">个人中心</a>
+            <a href="feedback.html" class="nav-link-style">意见反馈</a>
+        </div>
+    </div>
+</nav>
+
+<style>
+.nav-link-style {
+    color: #ffffff;
+    text-decoration: none;
+    padding: 10px 16px;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    font-weight: 500;
+    font-size: 15px;
+}
+.nav-link-style:hover {
+    background-color: #0D47A1;
+    color: white !important;
+}
+</style>
+
+<div class="container mt-5">
+    <h3 class="text-center">本周课程表</h3>
+    <table class="table table-bordered mt-4 text-center">
+        <thead class="table-dark">
+            <tr>
+                <th>节次</th>
+                <th>周一</th>
+                <th>周二</th>
+                <th>周三</th>
+                <th>周四</th>
+                <th>周五</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>1-2</td>
+                <td>高等数学</td>
+                <td></td>
+                <td>大学英语</td>
+                <td>计算机原理</td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>3-4</td>
+                <td></td>
+                <td>Python编程</td>
+                <td></td>
+                <td></td>
+                <td>思政</td>
+            </tr>
+            <tr>
+                <td>5-6</td>
+                <td>体育</td>
+                <td></td>
+                <td>数据结构</td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>7-8</td>
+                <td></td>
+                <td>概率论</td>
+                <td></td>
+                <td>实训课</td>
+                <td>选修课</td>
+            </tr>
+            <tr>
+                <td>9-10</td>
+                <td>自习</td>
+                <td>自习</td>
+                <td>自习</td>
+                <td>自习</td>
+                <td>自习</td>
+            </tr>
+        </tbody>
+    </table>
+    <a href="dashboard.html" class="btn btn-outline-primary mt-3">返回首页</a>
+</div>
+<script type="module" src="../static/js/schedule.js"></script>
+</body>
+</html>
