@@ -1,8 +1,25 @@
 import json
+import os
 import subprocess
+import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def get_bash_command():
+    if sys.platform == "win32":
+        git_bash_paths = [
+            r"D:\software\Git\bin\bash.exe",
+            r"C:\Program Files\Git\bin\bash.exe",
+            r"C:\Program Files (x86)\Git\bin\bash.exe",
+            os.path.expandvars(r"%PROGRAMFILES%\Git\bin\bash.exe"),
+        ]
+        for path in git_bash_paths:
+            if os.path.exists(path):
+                return path
+        return "bash"
+    return "bash"
 
 
 def run_shell(script_path, args=None, timeout=30):
@@ -16,7 +33,8 @@ def run_shell(script_path, args=None, timeout=30):
             "data": None,
         }
 
-    command = ["bash", str(full_script_path)] + [str(arg) for arg in args]
+    bash_cmd = get_bash_command()
+    command = [bash_cmd, str(full_script_path)] + [str(arg) for arg in args]
 
     try:
         result = subprocess.run(

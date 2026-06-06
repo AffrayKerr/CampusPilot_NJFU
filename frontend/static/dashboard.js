@@ -19,7 +19,7 @@ window.onload = async () => {
 }
 
 async function loadTodaySummary() {
-    const data = await request("/schedule/today")
+    const data = await request("/schedule/today", {}, true)
     if (!data) return
 
     const courseEl = document.getElementById("todayCourseCount")
@@ -33,7 +33,7 @@ async function loadTodaySummary() {
 }
 
 async function loadCampusStatus() {
-    const data = await request("/campus/status")
+    const data = await request("/campus/status", {}, true)
     if (!data) return
 
     const statusEl = document.getElementById("campusBindStatus")
