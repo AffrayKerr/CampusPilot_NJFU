@@ -19,7 +19,7 @@ async function requestWithoutToken(url, opts = {}) {
 window.onload = () => {
     const loginBtn = document.getElementById("loginBtn")
     const registerBtn = document.getElementById("registerBtn")
-    
+
     if (registerBtn) {
         registerBtn.onclick = async () => {
             const username = document.getElementById("username").value.trim()
@@ -61,7 +61,7 @@ window.onload = () => {
             }
         }
     }
-    
+
     if (loginBtn) {
         loginBtn.onclick = async () => {
             const username = document.getElementById("username").value.trim()
@@ -80,10 +80,7 @@ window.onload = () => {
             if (data && data.success) {
                 localStorage.setItem("campuspilot_token", data.data.token)
                 localStorage.setItem("campuspilot_user", JSON.stringify(data.data.user))
-                showSuccess("登录成功")
-                setTimeout(() => {
-                    window.location.href = "/dashboard"
-                }, 1000)
+                window.location.href = "/dashboard"
             } else {
                 showErr(data?.message || "登录失败")
             }
