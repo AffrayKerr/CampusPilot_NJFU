@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Independent exam arrangement scraper for JWC through WebVPN."""
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import re
 import sqlite3
 import sys
 import time
+from datetime import date
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -91,6 +92,7 @@ def load_session(user_id: str) -> requests.Session:
     if not path.is_file():
         raise RuntimeError("webvpn cookie not found; please login first via bind-interactive")
     session = requests.Session()
+    session.trust_env = False
     session.verify = False
     session.headers.update({"User-Agent": USER_AGENT, "Accept-Language": "zh-CN,zh;q=0.9"})
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -108,19 +110,43 @@ def load_session(user_id: str) -> requests.Session:
 
 
 def check_session_valid(response: requests.Response) -> None:
-    if "统一身份认证" in response.text or "casLoginForm" in response.text or "rump_frontend/login" in response.url:
+    invalid_markers = (
+        "统一身份认证",
+        "casLoginForm",
+        "rump_frontend/login",
+        "authserver/login",
+    )
+    if any(marker in response.text for marker in invalid_markers) or any(marker in response.url for marker in invalid_markers):
         raise RuntimeError("session expired; please re-login via bind-interactive")
+
+def current_term_id(today: date | None = None) -> str:
+    today = today or date.today()
+    if today.month >= 9:
+        return f"{today.year}-{today.year + 1}-1"
+    return f"{today.year - 1}-{today.year}-2"
 
 
 def choose_option(select: Any) -> str:
     options = select.find_all("option")
+    name = (select.get("name") or "").lower()
+    option_values = [(option.get("value", ""), option.get_text(" ", strip=True)) for option in options]
+
+    if any(key in name for key in ("xnxq", "xnxqid", "xq")):
+        current_term = current_term_id()
+        for value, text in option_values:
+            if value == current_term or current_term in text:
+                return value
+        for value, text in option_values:
+            if "2025-2026-2" in value or "2025-2026-2" in text:
+                return value
+
     for keyword in ("新庄校区", "未考试"):
-        for option in options:
-            if keyword in option.get_text(" ", strip=True) and option.get("value"):
-                return option["value"]
-    for option in options:
-        if option.get("value"):
-            return option["value"]
+        for value, text in option_values:
+            if keyword in text and value:
+                return value
+    for value, _text in option_values:
+        if value:
+            return value
     return ""
 
 
@@ -188,16 +214,27 @@ def inject_cookies(driver: Any, user_id: str) -> None:
 
 
 def select_native_exam_option(driver: Any, By: Any, Select: Any) -> bool:
+    selected = False
+    current_term = current_term_id()
     for select_el in driver.find_elements(By.TAG_NAME, "select"):
-        options_text = [option.text.strip() for option in select_el.find_elements(By.TAG_NAME, "option")]
+        select_name = (select_el.get_attribute("name") or "").lower()
+        options = select_el.find_elements(By.TAG_NAME, "option")
+        options_text = [option.text.strip() for option in options]
+
+        if any(key in select_name for key in ("xnxq", "xnxqid", "xq")):
+            target = next((text for text in options_text if current_term in text), "")
+            if target:
+                Select(select_el).select_by_visible_text(target)
+                selected = True
+            continue
+
         target = next((text for text in options_text if "新庄校区" in text), "")
         if not target:
             target = next((text for text in options_text if "未考试" in text), "")
         if target:
             Select(select_el).select_by_visible_text(target)
-            return True
-    return False
-
+            selected = True
+    return selected
 
 def select_custom_exam_option(driver: Any, By: Any, WebDriverWait: Any, timeout: int) -> bool:
     dropdown_triggers = driver.find_elements(
@@ -260,11 +297,38 @@ def save_debug_exam_html(user_id: str, html: str) -> None:
         print(json.dumps({"status": "exam_debug_html_save_failed", "error": str(exc)}, ensure_ascii=False), file=sys.stderr, flush=True)
 
 
-def submit_exam_query_directly(driver: Any) -> None:
+def submit_exam_query_directly(driver: Any, xqlb: str = "1") -> None:
+    if not extract_query_params(driver.page_source).get("xnxqid"):
+        driver.get(EXAM_QUERY_URLS[0])
+        time.sleep(1)
     params = extract_query_params(driver.page_source)
-    query = "&".join(f"{quote(str(k))}={quote(str(v))}" for k, v in params.items())
-    driver.get(f"{EXAM_URL}?{query}")
-
+    params["xnxqid"] = current_term_id()
+    params["xqlb"] = xqlb
+    params.setdefault("kw0401id", "")
+    params.setdefault("xqlbmc", "")
+    if not params.get("xqlb"):
+        params["xqlb"] = "1"
+    driver.execute_script(
+        """
+        const action = arguments[0];
+        const params = arguments[1];
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = action;
+        for (const [name, value] of Object.entries(params)) {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = value == null ? '' : String(value);
+            form.appendChild(input);
+        }
+        document.body.appendChild(form);
+        form.submit();
+        """,
+        EXAM_URL,
+        params,
+    )
+    time.sleep(2)
 
 def fetch_exam_html_with_browser(user_id: str) -> str:
     try:
@@ -328,24 +392,32 @@ def fetch_exam_html_with_browser(user_id: str) -> str:
             selected = select_custom_exam_option(driver, By, WebDriverWait, timeout)
         print(json.dumps({"status": "exam_option_selected", "selected": selected}, ensure_ascii=False), file=sys.stderr, flush=True)
 
-        clicked = click_exam_query_button(driver, By)
-        if not clicked:
-            submit_exam_query_directly(driver)
-
-        try:
-            WebDriverWait(driver, 8).until(lambda d: "dataList" in d.page_source or len(d.find_elements(By.XPATH, "//table//tr")) > 1)
-        except TimeoutException:
-            pass
-
-        html = driver.page_source
-        if not parse_exams(html):
-            print(json.dumps({"status": "exam_click_result_empty_retry_direct", "clicked": clicked}, ensure_ascii=False), file=sys.stderr, flush=True)
+        html = ""
+        for exam_type in ("1", "2", "3"):
+            submit_exam_query_directly(driver, exam_type)
             try:
-                submit_exam_query_directly(driver)
                 WebDriverWait(driver, 8).until(lambda d: "dataList" in d.page_source or len(d.find_elements(By.XPATH, "//table//tr")) > 1)
             except TimeoutException:
                 pass
+
             html = driver.page_source
+            exams = parse_exams(html)
+            print(
+                json.dumps(
+                    {
+                        "status": "exam_category_result",
+                        "xqlb": exam_type,
+                        "count": len(exams),
+                        "url": driver.current_url,
+                        "html_length": len(html),
+                    },
+                    ensure_ascii=False,
+                ),
+                file=sys.stderr,
+                flush=True,
+            )
+            if exams:
+                break
 
         save_debug_exam_html(user_id, html)
         print(json.dumps({"status": "exam_result_page", "url": driver.current_url, "html_length": len(html), "debug_html": str(debug_exam_html_path(user_id))}, ensure_ascii=False), file=sys.stderr, flush=True)
