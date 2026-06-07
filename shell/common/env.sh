@@ -8,6 +8,14 @@ shell_env_project_root() {
 }
 
 PROJECT_ROOT="${PROJECT_ROOT:-$(shell_env_project_root)}"
+
+if [[ -f "$PROJECT_ROOT/.env" ]]; then
+  set -a
+  # shellcheck source=/dev/null
+  source "$PROJECT_ROOT/.env"
+  set +a
+fi
+
 DATABASE_PATH="${DATABASE_PATH:-$PROJECT_ROOT/database/campuspilot.db}"
 RUNTIME_DIR="${RUNTIME_DIR:-$PROJECT_ROOT/runtime}"
 USERS_RUNTIME_DIR="${USERS_RUNTIME_DIR:-$RUNTIME_DIR/users}"

@@ -63,10 +63,15 @@ try:
     msg["To"] = to_addr
     msg["Subject"] = Header(subject, "utf-8")
 
-    with smtplib.SMTP(smtp_host, int(smtp_port), timeout=10) as server:
-        server.starttls()
-        server.login(smtp_user, smtp_pass)
-        server.sendmail(smtp_user, [to_addr], msg.as_string())
+    if int(smtp_port) == 465:
+        with smtplib.SMTP_SSL(smtp_host, int(smtp_port), timeout=10) as server:
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_user, [to_addr], msg.as_string())
+    else:
+        with smtplib.SMTP(smtp_host, int(smtp_port), timeout=10) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_user, [to_addr], msg.as_string())
 
     print(json.dumps({"ok": True}))
 except Exception as e:

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Schedule and exam scraper for JWC (教务管理系统) through WebVPN."""
 
 from __future__ import annotations
@@ -635,6 +635,23 @@ def cmd_list_today(user_id: str) -> None:
     ).fetchall()
     exam_rows = [row for row in all_exam_rows if exam_time_matches_month(row["exam_time"], today)]
 
+    exam_ids = [row["id"] for row in exam_rows]
+    reminders_by_exam = {exam_id: [] for exam_id in exam_ids}
+    if exam_ids:
+        placeholders = ",".join("?" for _ in exam_ids)
+        reminder_rows = conn.execute(
+            f"SELECT id, target_id, remind_before_minutes, enabled FROM reminders WHERE user_id = ? AND target_type = 'exam' AND target_id IN ({placeholders}) ORDER BY remind_before_minutes DESC",
+            [user_id, *exam_ids],
+        ).fetchall()
+        for reminder in reminder_rows:
+            reminders_by_exam.setdefault(reminder["target_id"], []).append(dict(reminder))
+
+    exams = []
+    for row in exam_rows:
+        exam = dict(row)
+        exam["reminders"] = reminders_by_exam.get(row["id"], [])
+        exams.append(exam)
+
     conn.close()
     emit(True, "执行成功", {
         "date": today_str,
@@ -642,7 +659,7 @@ def cmd_list_today(user_id: str) -> None:
         "current_week": current_week if current_week > 0 else None,
         "courses": courses,
         "schedules": courses,
-        "exams": [dict(r) for r in exam_rows],
+        "exams": exams,
         "tasks": [dict(r) for r in task_rows],
     })
 

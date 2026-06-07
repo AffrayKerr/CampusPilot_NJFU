@@ -1,4 +1,4 @@
-import { request, checkLogin } from "./main.js"
+﻿import { request, checkLogin } from "./main.js"
 
 window.onload = async () => {
     if (!checkLogin()) return
@@ -39,6 +39,41 @@ function setButtonLoading(buttonId, loading, text) {
     button.textContent = button.dataset.originalText || button.textContent
 }
 
+function toDatetimeLocalValue(date) {
+    if (!date || Number.isNaN(date.getTime())) return ""
+    const pad = value => String(value).padStart(2, "0")
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function parseExamStartTime(examTime) {
+    const text = String(examTime || "").replace("T", " ")
+    const match = text.match(/(\d{4}-\d{1,2}-\d{1,2})\s+(\d{1,2}:\d{2})/)
+    if (!match) return null
+    return new Date(`${match[1]}T${match[2]}`)
+}
+
+function defaultReminderAt(exam) {
+    const examStart = parseExamStartTime(exam.exam_time || exam.exam_date)
+    if (!examStart) return ""
+    const minutes = exam.reminders?.[0]?.remind_before_minutes ?? 120
+    return toDatetimeLocalValue(new Date(examStart.getTime() - minutes * 60 * 1000))
+}
+
+function renderExamItem(exam) {
+    const examTime = exam.exam_date || exam.exam_time || ""
+    const location = exam.location || exam.exam_location || "未知"
+    const reminderValue = defaultReminderAt(exam)
+    return `<div class="alert alert-warning">
+        <div class="fw-semibold">${exam.course_name}</div>
+        <div class="small">${examTime} @ ${location}</div>
+        <div class="input-group input-group-sm mt-2">
+            <span class="input-group-text">提醒时间</span>
+            <input type="datetime-local" class="form-control" id="examReminder-${exam.id}" value="${reminderValue}">
+            <button class="btn btn-outline-dark" onclick="saveExamReminder(${exam.id})">保存</button>
+        </div>
+    </div>`
+}
+
 async function loadTodaySchedule() {
     const data = await request("/schedule/today")
     if (!data) return
@@ -66,9 +101,7 @@ async function loadTodaySchedule() {
 
     if (examContainer) {
         if (exams.length > 0) {
-            examContainer.innerHTML = exams.map(e =>
-                `<div class="alert alert-warning">${e.course_name} - ${e.exam_date || e.exam_time || ''} @ ${e.location || e.exam_location || '未知'}</div>`
-            ).join('')
+            examContainer.innerHTML = exams.map(renderExamItem).join('')
         } else {
             examContainer.innerHTML = '<p class="text-muted mb-0">暂无本月考试</p>'
         }
@@ -123,6 +156,25 @@ async function loadNextWeekSchedule() {
             </div>
         </div>`
     }).join('')
+}
+
+window.saveExamReminder = async function(examId) {
+    const input = document.getElementById(`examReminder-${examId}`)
+    const remindAt = input?.value
+    if (!remindAt) {
+        setStatus("请选择考试提醒时间", "warning")
+        return
+    }
+
+    const result = await request("/reminder/exam/set-absolute", {
+        method: "POST",
+        body: JSON.stringify({ exam_id: examId, remind_at: remindAt })
+    })
+
+    if (result !== null) {
+        setStatus("考试提醒时间已保存", "success")
+        await loadTodaySchedule()
+    }
 }
 
 async function syncSchedule() {

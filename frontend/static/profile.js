@@ -1,4 +1,4 @@
-import { request, showSuccess, showErr, checkLogin, getCurrentUser } from "./main.js"
+﻿import { request, showSuccess, showErr, checkLogin, getCurrentUser } from "./main.js"
 
 window.onload = async () => {
     if (!checkLogin()) return
@@ -29,6 +29,7 @@ function toBool(value, defaultValue = false) {
     if (typeof value === "string") return ["1", "true", "yes", "on"].includes(value.toLowerCase())
     return Boolean(value)
 }
+
 
 async function loadProfile() {
     const data = await request("/user/profile")
@@ -77,6 +78,8 @@ async function saveProfile() {
         method: "POST",
         body: JSON.stringify({ email, enable_email: enableEmail, enable_desktop: enableDesktop })
     })
+    if (result === null) return null
+
     if (result !== null) {
         showSuccess("个人信息保存成功")
         localStorage.setItem("campuspilot_user", JSON.stringify({
@@ -84,6 +87,8 @@ async function saveProfile() {
             email
         }))
     }
+
+    return result
 }
 
 async function testEmail() {

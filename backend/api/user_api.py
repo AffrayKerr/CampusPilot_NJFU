@@ -1,4 +1,4 @@
-from flask import Blueprint, g, jsonify, request
+﻿from flask import Blueprint, g, jsonify, request
 
 from services.auth_service import login_required
 from services.db import execute, fetch_one, init_database
@@ -26,9 +26,18 @@ def get_profile():
     init_database()
     user = fetch_one(
         """
-        SELECT id, username, email, role, created_at, updated_at
-        FROM users
-        WHERE id = ?
+        SELECT
+            u.id,
+            u.username,
+            u.email,
+            u.role,
+            u.created_at,
+            u.updated_at,
+            COALESCE(ns.enable_email, 0) AS enable_email,
+            COALESCE(ns.enable_desktop, 1) AS enable_desktop
+        FROM users u
+        LEFT JOIN notification_settings ns ON ns.user_id = u.id
+        WHERE u.id = ?
         """,
         [g.current_user["id"]],
     )
@@ -49,14 +58,24 @@ def update_profile():
         "UPDATE users SET email = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
         [email, g.current_user["id"]],
     )
-    execute(
-        """
-        UPDATE notification_settings
-        SET enable_email = ?, enable_desktop = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE user_id = ?
-        """,
-        [enable_email, enable_desktop, g.current_user["id"]],
-    )
+    setting = fetch_one("SELECT id FROM notification_settings WHERE user_id = ?", [g.current_user["id"]])
+    if setting:
+        execute(
+            """
+            UPDATE notification_settings
+            SET enable_email = ?, enable_desktop = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = ?
+            """,
+            [enable_email, enable_desktop, g.current_user["id"]],
+        )
+    else:
+        execute(
+            """
+            INSERT INTO notification_settings (user_id, enable_email, enable_desktop)
+            VALUES (?, ?, ?)
+            """,
+            [g.current_user["id"], enable_email, enable_desktop],
+        )
     return success_response("User profile updated")
 
 

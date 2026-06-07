@@ -77,15 +77,36 @@ def resolve_user_pk(conn: sqlite3.Connection, user_id: str) -> int:
 def save_exams(user_id: str, exams: list[dict[str, str]]) -> None:
     conn = db_connect()
     uid = resolve_user_pk(conn, user_id)
+    settings = conn.execute(
+        "SELECT exam_default_reminders FROM notification_settings WHERE user_id = ?",
+        (uid,),
+    ).fetchone()
+    try:
+        default_reminders = json.loads(settings["exam_default_reminders"] or "[1440, 120]") if settings else [1440, 120]
+    except (TypeError, json.JSONDecodeError):
+        default_reminders = [1440, 120]
+
+    conn.execute("DELETE FROM reminders WHERE user_id = ? AND target_type = 'exam'", (uid,))
     conn.execute("DELETE FROM exams WHERE user_id = ?", (uid,))
     for exam in exams:
-        conn.execute(
+        cursor = conn.execute(
             "INSERT INTO exams (user_id, course_name, exam_time, exam_location, seat_number) VALUES (?, ?, ?, ?, ?)",
             (uid, exam["course_name"], exam["exam_time"], exam["exam_location"], exam["seat_number"]),
         )
+        exam_id = cursor.lastrowid
+        for minutes in default_reminders:
+            try:
+                remind_before_minutes = int(minutes)
+            except (TypeError, ValueError):
+                continue
+            if remind_before_minutes <= 0:
+                continue
+            conn.execute(
+                "INSERT INTO reminders (user_id, target_type, target_id, remind_before_minutes, enabled) VALUES (?, 'exam', ?, ?, 1)",
+                (uid, exam_id, remind_before_minutes),
+            )
     conn.commit()
     conn.close()
-
 
 def load_session(user_id: str) -> requests.Session:
     path = cookie_path(user_id)
