@@ -254,6 +254,44 @@ def set_exam_absolute_reminder():
     )
     reminder = fetch_one("SELECT * FROM reminders WHERE id = ?", [reminder_id])
     return success_response("Exam reminder updated", reminder)
+
+@reminder_bp.route("/schedule/set-absolute", methods=["POST"])
+@login_required
+def set_schedule_absolute_reminder():
+    init_database()
+    data = request.get_json(silent=True) or {}
+    missing = require_fields(data, ["schedule_id", "remind_at"])
+    if missing:
+        return error_response(f"Missing fields: {', '.join(missing)}")
+
+    schedule_id, error = parse_positive_int(data["schedule_id"], "schedule_id")
+    if error:
+        return error_response(error)
+
+    schedule = fetch_one(
+        "SELECT id FROM schedules WHERE id = ? AND user_id = ?",
+        [schedule_id, g.current_user["id"]],
+    )
+    if not schedule:
+        return error_response("Schedule not found", status_code=404)
+
+    remind_dt = parse_absolute_datetime(data.get("remind_at"))
+    if not remind_dt:
+        return error_response("Reminder time must be YYYY-MM-DD HH:mm")
+
+    execute(
+        "DELETE FROM schedule_absolute_reminders WHERE user_id = ? AND schedule_id = ?",
+        [g.current_user["id"], schedule_id],
+    )
+    reminder_id = execute(
+        """
+        INSERT INTO schedule_absolute_reminders (user_id, schedule_id, remind_at, enabled)
+        VALUES (?, ?, ?, 1)
+        """,
+        [g.current_user["id"], schedule_id, remind_dt.strftime("%Y-%m-%d %H:%M:%S")],
+    )
+    reminder = fetch_one("SELECT * FROM schedule_absolute_reminders WHERE id = ?", [reminder_id])
+    return success_response("Schedule reminder updated", reminder)
 @reminder_bp.route("/defaults/apply", methods=["POST"])
 @login_required
 def apply_default_reminders():

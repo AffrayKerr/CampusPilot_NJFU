@@ -115,6 +115,7 @@ enable_email = bool(settings["enable_email"]) if settings else False
 enable_desktop = bool(settings["enable_desktop"]) if settings else True
 pending = []
 
+# 周期性课程提醒
 cur.execute(
     "SELECT r.id, r.remind_before_minutes, s.course_name, s.teacher, s.section, s.classroom, s.week_info, s.note "
     "FROM reminders r JOIN schedules s ON r.target_id = s.id "
@@ -132,13 +133,45 @@ for row in cur.fetchall():
     remind_dt = class_dt - timedelta(minutes=row["remind_before_minutes"])
     if remind_dt <= now < remind_dt + timedelta(minutes=1):
         pending.append({
-            "reminder_id": row["id"], "type": "schedule", "title": row["course_name"],
-            "teacher": row["teacher"] or "", "section": row["section"] or "",
-            "location": row["classroom"] or "", "note": row["note"] or "",
+            "reminder_id": row["id"],
+            "reminder_source": "reminders",
+            "type": "schedule",
+            "title": row["course_name"],
+            "teacher": row["teacher"] or "",
+            "section": row["section"] or "",
+            "location": row["classroom"] or "",
+            "note": row["note"] or "",
             "remind_before_minutes": row["remind_before_minutes"],
-            "enable_email": enable_email, "enable_desktop": enable_desktop,
+            "enable_email": enable_email,
+            "enable_desktop": enable_desktop,
         })
 
+# 一次性课程绝对提醒
+cur.execute(
+    "SELECT sar.id, sar.remind_at, s.course_name, s.teacher, s.section, s.classroom, s.note "
+    "FROM schedule_absolute_reminders sar JOIN schedules s ON sar.schedule_id = s.id "
+    "WHERE sar.user_id = ? AND sar.enabled = 1",
+    (uid,),
+)
+for row in cur.fetchall():
+    remind_dt = parse_datetime(row["remind_at"])
+    if not remind_dt or remind_dt > now:
+        continue
+    pending.append({
+        "reminder_id": row["id"],
+        "reminder_source": "schedule_absolute_reminders",
+        "type": "schedule_absolute",
+        "title": row["course_name"],
+        "teacher": row["teacher"] or "",
+        "section": row["section"] or "",
+        "location": row["classroom"] or "",
+        "note": row["note"] or "",
+        "remind_before_minutes": 0,
+        "enable_email": enable_email,
+        "enable_desktop": enable_desktop,
+    })
+
+# 考试提醒
 cur.execute(
     "SELECT r.id, r.remind_before_minutes, e.course_name, e.exam_time, e.exam_location, e.seat_number, e.note "
     "FROM reminders r JOIN exams e ON r.target_id = e.id "
@@ -152,13 +185,20 @@ for row in cur.fetchall():
     remind_dt = exam_dt - timedelta(minutes=row["remind_before_minutes"])
     if remind_dt <= now:
         pending.append({
-            "reminder_id": row["id"], "type": "exam", "title": row["course_name"],
-            "exam_time": row["exam_time"], "location": row["exam_location"] or "",
-            "seat_number": row["seat_number"] or "", "note": row["note"] or "",
+            "reminder_id": row["id"],
+            "reminder_source": "reminders",
+            "type": "exam",
+            "title": row["course_name"],
+            "exam_time": row["exam_time"],
+            "location": row["exam_location"] or "",
+            "seat_number": row["seat_number"] or "",
+            "note": row["note"] or "",
             "remind_before_minutes": row["remind_before_minutes"],
-            "enable_email": enable_email, "enable_desktop": enable_desktop,
+            "enable_email": enable_email,
+            "enable_desktop": enable_desktop,
         })
 
+# 任务提醒
 cur.execute(
     "SELECT r.id, r.remind_before_minutes, t.title, t.category, t.priority, t.deadline, t.note "
     "FROM reminders r JOIN tasks t ON r.target_id = t.id "
@@ -172,11 +212,17 @@ for row in cur.fetchall():
     remind_dt = deadline_dt - timedelta(minutes=row["remind_before_minutes"])
     if remind_dt <= now:
         pending.append({
-            "reminder_id": row["id"], "type": "task", "title": row["title"],
-            "category": row["category"] or "", "priority": row["priority"] or "medium",
-            "deadline": row["deadline"], "note": row["note"] or "",
+            "reminder_id": row["id"],
+            "reminder_source": "reminders",
+            "type": "task",
+            "title": row["title"],
+            "category": row["category"] or "",
+            "priority": row["priority"] or "medium",
+            "deadline": row["deadline"],
+            "note": row["note"] or "",
             "remind_before_minutes": row["remind_before_minutes"],
-            "enable_email": enable_email, "enable_desktop": enable_desktop,
+            "enable_email": enable_email,
+            "enable_desktop": enable_desktop,
         })
 
 conn.close()
@@ -188,13 +234,21 @@ build_notification_content() {
   local reminder_json="$1"
   "$AUTH_PYTHON" - "$reminder_json" <<'PY'
 import json, sys
+
 r = json.loads(sys.argv[1])
 type_ = r["type"]
-minutes = r["remind_before_minutes"]
+minutes = r.get("remind_before_minutes", 0)
 
 if type_ == "schedule":
     title = f"课程提醒 · {r['title']}"
     body_parts = [f"还有 {minutes} 分钟上课"]
+    if r.get("teacher"): body_parts.append(f"教师: {r['teacher']}")
+    if r.get("section"): body_parts.append(f"节次: {r['section']}")
+    if r.get("location"): body_parts.append(f"地点: {r['location']}")
+    if r.get("note"): body_parts.append(f"备注: {r['note']}")
+elif type_ == "schedule_absolute":
+    title = f"课程提醒 · {r['title']}"
+    body_parts = ["已到你设置的上课提醒时间"]
     if r.get("teacher"): body_parts.append(f"教师: {r['teacher']}")
     if r.get("section"): body_parts.append(f"节次: {r['section']}")
     if r.get("location"): body_parts.append(f"地点: {r['location']}")
@@ -222,7 +276,7 @@ PY
 send_one_reminder() {
   local reminder_json="$1"
   local notify_dir="$SCRIPT_DIR/../notification"
-  local content title body enable_email enable_desktop reminder_type reminder_id
+  local content title body enable_email enable_desktop reminder_type reminder_id reminder_source
 
   content="$(build_notification_content "$reminder_json")"
   title="$(printf '%s\n' "$content" | head -n 1)"
@@ -231,6 +285,7 @@ send_one_reminder() {
   enable_desktop="$(printf '%s' "$reminder_json" | "$AUTH_PYTHON" -c "import sys,json; print(json.loads(sys.stdin.read()).get('enable_desktop', True))")"
   reminder_type="$(printf '%s' "$reminder_json" | "$AUTH_PYTHON" -c "import sys,json; print(json.loads(sys.stdin.read()).get('type', ''))")"
   reminder_id="$(printf '%s' "$reminder_json" | "$AUTH_PYTHON" -c "import sys,json; print(json.loads(sys.stdin.read()).get('reminder_id', ''))")"
+  reminder_source="$(printf '%s' "$reminder_json" | "$AUTH_PYTHON" -c "import sys,json; print(json.loads(sys.stdin.read()).get('reminder_source', 'reminders'))")"
 
   if [[ "$enable_desktop" == "True" ]] && [[ -f "$notify_dir/notify_desktop.sh" ]]; then
     bash "$notify_dir/notify_desktop.sh" "$user_id" "$title" "$body" || true
@@ -242,10 +297,16 @@ send_one_reminder() {
 
   shell_log_write INFO schedule "reminder sent: $title" "$body" "$user_id"
 
-  if [[ "$reminder_type" != "schedule" ]] && [[ -n "$reminder_id" ]]; then
-    shell_db_execute \
-      "UPDATE reminders SET enabled = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = (SELECT id FROM users WHERE username = ? OR CAST(id AS TEXT) = ?)" \
-      "$reminder_id" "$user_id" "$user_id"
+  if [[ -n "$reminder_id" && "$reminder_type" != "schedule" ]]; then
+    if [[ "$reminder_source" == "schedule_absolute_reminders" ]]; then
+      shell_db_execute \
+        "UPDATE schedule_absolute_reminders SET enabled = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = (SELECT id FROM users WHERE username = ? OR CAST(id AS TEXT) = ?)" \
+        "$reminder_id" "$user_id" "$user_id"
+    else
+      shell_db_execute \
+        "UPDATE reminders SET enabled = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = (SELECT id FROM users WHERE username = ? OR CAST(id AS TEXT) = ?)" \
+        "$reminder_id" "$user_id" "$user_id"
+    fi
   fi
 }
 
