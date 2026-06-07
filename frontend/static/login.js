@@ -1,4 +1,4 @@
-import { showErr, showSuccess } from "./main.js"
+import { showErr } from "./main.js"
 
 const baseUrl = "/api"
 
@@ -52,10 +52,12 @@ window.onload = () => {
             })
 
             if (data && data.success) {
-                showSuccess("注册成功，请登录")
-                document.getElementById("username").value = ""
+                document.getElementById("username").value = username
                 document.getElementById("email").value = ""
                 document.getElementById("password").value = ""
+                if (typeof switchTab === "function") {
+                    switchTab("login")
+                }
             } else {
                 showErr(data?.message || "注册失败")
             }
