@@ -10,6 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 def get_bash_command():
     if sys.platform == "win32":
         git_bash_paths = [
+            r"D:\Git\bin\bash.exe",
             r"D:\software\Git\bin\bash.exe",
             r"C:\Program Files\Git\bin\bash.exe",
             r"C:\Program Files (x86)\Git\bin\bash.exe",
@@ -20,6 +21,10 @@ def get_bash_command():
                 return path
         return "bash"
     return "bash"
+
+
+def bash_path(path):
+    return str(path).replace("\\", "/")
 
 
 def run_shell(script_path, args=None, timeout=30):
@@ -34,12 +39,13 @@ def run_shell(script_path, args=None, timeout=30):
         }
 
     bash_cmd = get_bash_command()
-    command = [bash_cmd, str(full_script_path)] + [str(arg) for arg in args]
+    command = [bash_cmd, bash_path(full_script_path)] + [str(arg) for arg in args]
 
     env = os.environ.copy()
-    env["DATABASE_PATH"] = str(PROJECT_ROOT / "database" / "campuspilot.db").replace("\\", "/")
-    env["PROJECT_ROOT"] = str(PROJECT_ROOT).replace("\\", "/")
+    env["DATABASE_PATH"] = bash_path(PROJECT_ROOT / "database" / "campuspilot.db")
+    env["PROJECT_ROOT"] = bash_path(PROJECT_ROOT)
     env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUTF8"] = "1"
 
     try:
         result = subprocess.run(
