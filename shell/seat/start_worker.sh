@@ -19,6 +19,7 @@ fi
 user_runtime_dir=$(shell_env_ensure_user_runtime_dir "$user_id")
 lock_file="$user_runtime_dir/seat_worker.lock"
 pid_file="$user_runtime_dir/seat_worker.pid"
+log_file="$user_runtime_dir/seat_worker.log"
 
 if [[ -f "$lock_file" ]] && [[ -f "$pid_file" ]]; then
   pid=$(cat "$pid_file")
@@ -29,8 +30,9 @@ if [[ -f "$lock_file" ]] && [[ -f "$pid_file" ]]; then
 fi
 
 touch "$lock_file"
+: > "$log_file"
 
-nohup bash "$script_dir/seat_worker.sh" "$user_id" >> "$user_runtime_dir/seat_worker.log" 2>&1 &
+nohup bash "$script_dir/seat_worker.sh" "$user_id" >> "$log_file" 2>&1 &
 worker_pid=$!
 echo "$worker_pid" > "$pid_file"
 

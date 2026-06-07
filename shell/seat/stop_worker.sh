@@ -34,6 +34,9 @@ if ps -p "$pid" >/dev/null 2>&1; then
   fi
 fi
 
+pkill -f "seat_client.py worker $user_id" 2>/dev/null || true
+pkill -f "seat_worker.sh $user_id" 2>/dev/null || true
+
 rm -f "$lock_file" "$pid_file"
 
 shell_log_write "INFO" "seat" "Seat worker stopped" "pid=$pid" "$user_id"
