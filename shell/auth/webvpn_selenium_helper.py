@@ -125,28 +125,64 @@ def submit_cas_login(driver: webdriver.Chrome, username: str, password: str) -> 
     pwd_el = find_first(driver, [(By.ID, "password"), (By.NAME, "password")])
     if pwd_el is None:
         raise RuntimeError("CAS password input not found")
-    user_el.clear(); user_el.send_keys(username)
-    pwd_el.clear(); pwd_el.send_keys(password)
+    user_el.clear()
+    user_el.send_keys(username)
+    pwd_el.clear()
+    pwd_el.send_keys(password)
     btn = find_first(driver, [(By.ID, "login-submit"), (By.CSS_SELECTOR, "button[type='submit']"), (By.CSS_SELECTOR, "input[type='submit']")])
-    btn.click() if btn is not None else pwd_el.submit()
+    if btn is not None:
+        btn.click()
+    else:
+        pwd_el.submit()
+
+
+def is_cas_login_page(driver: webdriver.Chrome) -> bool:
+    return "authserver" in driver.current_url or find_first(driver, [(By.ID, "username"), (By.NAME, "username")]) is not None
+
+
+def is_webvpn_login_portal(driver: webdriver.Chrome) -> bool:
+    return "frontend_static/frontend/login" in driver.current_url or "rump_frontend/login" in driver.current_url
+
+
+def trigger_webvpn_login_page(driver: webdriver.Chrome) -> None:
+    urls = [WEBVPN_BASE, LIBRARY_SSO_URL, JWC_MAIN_URL]
+    for url in urls:
+        safe_get(driver, url, 60)
+        time.sleep(2)
+        click_rump_redirect(driver)
+        print(json.dumps({"status": "webvpn_login_probe", "url": url, "current_url": driver.current_url, "cas_login": is_cas_login_page(driver), "webvpn_portal": is_webvpn_login_portal(driver)}, ensure_ascii=False), file=sys.stderr)
+        if is_cas_login_page(driver):
+            return
+        if "webvpn.njfu.edu.cn" in driver.current_url and driver.current_url not in (WEBVPN_BASE, WEBVPN_BASE + "/") and not is_webvpn_login_portal(driver):
+            return
 
 
 def wait_webvpn_ready(driver: webdriver.Chrome, timeout: int) -> None:
     WebDriverWait(driver, timeout).until(lambda d: (
         "authserver/login" not in d.current_url
+        and not is_webvpn_login_portal(d)
         and d.current_url not in (WEBVPN_BASE, WEBVPN_BASE + "/")
         and "webvpn.njfu.edu.cn" in d.current_url
     ))
 
 
 def auto_webvpn_login(driver: webdriver.Chrome, username: str, password: str) -> None:
-    driver.get(WEBVPN_BASE)
-    time.sleep(2)
-    if "authserver" in driver.current_url or find_first(driver, [(By.ID, "username"), (By.NAME, "username")]):
-        print(json.dumps({"status": "auto_login", "username": username}, ensure_ascii=False), file=sys.stderr)
+    trigger_webvpn_login_page(driver)
+    if is_cas_login_page(driver):
+        print(json.dumps({"status": "auto_login_submit", "username": username, "current_url": driver.current_url}, ensure_ascii=False), file=sys.stderr)
         submit_cas_login(driver, username, password)
-    wait_webvpn_ready(driver, TIMEOUT_SECONDS)
+        time.sleep(3)
+    else:
+        print(json.dumps({"status": "auto_login_no_cas_page", "current_url": driver.current_url}, ensure_ascii=False), file=sys.stderr)
 
+    try:
+        wait_webvpn_ready(driver, 30)
+    except TimeoutException as exc:
+        if is_cas_login_page(driver):
+            raise RuntimeError("WebVPN/CAS login did not complete; please check campus account/password or captcha/MFA requirements") from exc
+        raise RuntimeError(f"WebVPN did not become ready after login probes; current_url={driver.current_url}") from exc
+
+    print(json.dumps({"status": "webvpn_ready", "current_url": driver.current_url}, ensure_ascii=False), file=sys.stderr)
 
 def safe_get(driver: webdriver.Chrome, url: str, timeout: int = 60) -> None:
     try:
