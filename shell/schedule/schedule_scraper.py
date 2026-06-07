@@ -535,10 +535,21 @@ def week_matches(week_info: str, current_week: int) -> bool:
 def build_week_schedule(user_id: str, target_week: int) -> dict[str, Any]:
     conn = db_connect()
     schedule_rows = conn.execute(
-        "SELECT course_name, teacher, week_info, weekday, section, classroom FROM schedules "
+        "SELECT id, course_name, teacher, week_info, weekday, section, classroom FROM schedules "
         "WHERE user_id = ? ORDER BY weekday ASC, section ASC, id ASC",
         (user_id,),
     ).fetchall()
+
+    schedule_ids = [row["id"] for row in schedule_rows]
+    absolute_reminders_by_schedule: dict[int, dict[str, Any]] = {}
+    if schedule_ids:
+        placeholders = ",".join("?" for _ in schedule_ids)
+        reminder_rows = conn.execute(
+            f"SELECT id, schedule_id, remind_at, enabled FROM schedule_absolute_reminders WHERE user_id = ? AND enabled = 1 AND schedule_id IN ({placeholders})",
+            [user_id, *schedule_ids],
+        ).fetchall()
+        for reminder in reminder_rows:
+            absolute_reminders_by_schedule[reminder["schedule_id"]] = dict(reminder)
     conn.close()
 
     weekdays = [
@@ -553,12 +564,14 @@ def build_week_schedule(user_id: str, target_week: int) -> dict[str, Any]:
         if not weekday or weekday < 1 or weekday > 7:
             continue
         weekdays[weekday - 1]["courses"].append({
+            "id": row["id"],
             "course_name": row["course_name"],
             "teacher": row["teacher"],
             "section": row["section"],
             "classroom": row["classroom"],
             "week_info": row["week_info"],
             "weekday": weekday,
+            "absolute_reminder": absolute_reminders_by_schedule.get(row["id"]),
         })
 
     return {"target_week": target_week, "weekdays": weekdays}

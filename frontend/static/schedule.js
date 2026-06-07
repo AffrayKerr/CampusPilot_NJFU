@@ -118,11 +118,57 @@ async function loadTodaySchedule() {
     }
 }
 
-function renderCourseItem(course) {
+function parseScheduleReminderAt(value) {
+    if (!value) return null
+    const normalized = String(value).trim().replace(" ", "T")
+    const date = new Date(normalized)
+    return Number.isNaN(date.getTime()) ? null : date
+}
+
+function parseSectionStart(section) {
+    const firstSection = String(section || "").match(/\d+/)?.[0]
+    const sectionTimes = {
+        "1": "08:00", "2": "08:55", "3": "09:55", "4": "10:50",
+        "5": "11:45", "6": "12:40", "7": "14:00", "8": "14:55",
+        "9": "15:55", "10": "16:50", "11": "18:30", "12": "19:25", "13": "20:20"
+    }
+    return firstSection ? sectionTimes[firstSection] || "" : ""
+}
+
+function nextWeekCourseStart(course, targetWeek, currentWeek) {
+    if (!targetWeek || !currentWeek) return null
+    const startTime = parseSectionStart(course.section)
+    if (!startTime) return null
+
+    const classDate = new Date()
+    classDate.setHours(0, 0, 0, 0)
+    classDate.setDate(classDate.getDate() + (targetWeek - currentWeek) * 7 + ((course.weekday || 1) - 1))
+
+    const [hours, minutes] = startTime.split(":").map(Number)
+    classDate.setHours(hours, minutes, 0, 0)
+    return classDate
+}
+
+function defaultScheduleReminderAt(course, targetWeek, currentWeek) {
+    const existing = parseScheduleReminderAt(course.absolute_reminder?.remind_at)
+    if (existing) return toDatetimeLocalValue(existing)
+
+    const classStart = nextWeekCourseStart(course, targetWeek, currentWeek)
+    if (!classStart) return ""
+    return toDatetimeLocalValue(new Date(classStart.getTime() - 15 * 60 * 1000))
+}
+
+function renderCourseItem(course, targetWeek, currentWeek) {
+    const reminderValue = defaultScheduleReminderAt(course, targetWeek, currentWeek)
     return `<div class="border rounded p-2 mb-2 bg-light">
         <div class="fw-semibold">${course.course_name || '未命名课程'}</div>
         <div class="small text-muted">${course.section || ''} ${course.classroom ? `@ ${course.classroom}` : ''}</div>
         <div class="small text-muted">${course.teacher || ''} ${course.week_info || ''}</div>
+        <div class="input-group input-group-sm mt-2">
+            <span class="input-group-text">提醒时间</span>
+            <input type="datetime-local" class="form-control" id="scheduleReminder-${course.id}" value="${reminderValue}">
+            <button class="btn btn-outline-primary" onclick="saveScheduleReminder(${course.id})">保存</button>
+        </div>
     </div>`
 }
 
@@ -152,10 +198,29 @@ async function loadNextWeekSchedule() {
         return `<div class="col-md-6 col-lg-4">
             <div class="border rounded h-100 p-3 bg-white">
                 <div class="fw-bold mb-2">${day.weekday_name || `周${day.weekday || ''}`}</div>
-                ${courses.length ? courses.map(renderCourseItem).join('') : '<p class="text-muted small mb-0">暂无课程</p>'}
+                ${courses.length ? courses.map(course => renderCourseItem(course, data.target_week, data.current_week)).join('') : '<p class="text-muted small mb-0">暂无课程</p>'}
             </div>
         </div>`
     }).join('')
+}
+
+window.saveScheduleReminder = async function(scheduleId) {
+    const input = document.getElementById(`scheduleReminder-${scheduleId}`)
+    const remindAt = input?.value
+    if (!remindAt) {
+        setStatus("请选择课程提醒时间", "warning")
+        return
+    }
+
+    const result = await request("/reminder/schedule/set-absolute", {
+        method: "POST",
+        body: JSON.stringify({ schedule_id: scheduleId, remind_at: remindAt })
+    })
+
+    if (result !== null) {
+        setStatus("课程提醒时间已保存", "success")
+        await loadNextWeekSchedule()
+    }
 }
 
 window.saveExamReminder = async function(examId) {
