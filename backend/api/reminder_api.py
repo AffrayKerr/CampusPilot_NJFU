@@ -1,4 +1,6 @@
-import json
+﻿import json
+import re
+from datetime import datetime
 
 from flask import Blueprint, g, request
 
@@ -75,6 +77,18 @@ def target_exists(user_id, target_type, target_id):
     )
 
 
+
+def parse_absolute_datetime(value):
+    text = str(value or "").strip().replace("T", " ")
+    match = re.search(r"(\d{4}-\d{1,2}-\d{1,2})\s+(\d{1,2}:\d{2})", text)
+    if match:
+        text = f"{match.group(1)} {match.group(2)}"
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+    return None
 @reminder_bp.route("/list", methods=["GET"])
 @login_required
 def list_reminders():
@@ -195,6 +209,51 @@ def delete_reminder():
     return success_response("Reminder deleted")
 
 
+
+@reminder_bp.route("/exam/set-absolute", methods=["POST"])
+@login_required
+def set_exam_absolute_reminder():
+    init_database()
+    data = request.get_json(silent=True) or {}
+    missing = require_fields(data, ["exam_id", "remind_at"])
+    if missing:
+        return error_response(f"Missing fields: {', '.join(missing)}")
+
+    exam_id, error = parse_positive_int(data["exam_id"], "exam_id")
+    if error:
+        return error_response(error)
+
+    exam = fetch_one(
+        "SELECT id, exam_time FROM exams WHERE id = ? AND user_id = ?",
+        [exam_id, g.current_user["id"]],
+    )
+    if not exam:
+        return error_response("Exam not found", status_code=404)
+
+    exam_dt = parse_absolute_datetime(exam.get("exam_time"))
+    remind_dt = parse_absolute_datetime(data.get("remind_at"))
+    if not exam_dt:
+        return error_response("Exam time cannot be parsed")
+    if not remind_dt:
+        return error_response("Reminder time must be YYYY-MM-DD HH:mm")
+
+    remind_before_minutes = int((exam_dt - remind_dt).total_seconds() // 60)
+    if remind_before_minutes <= 0:
+        return error_response("Reminder time must be earlier than exam time")
+
+    execute(
+        "DELETE FROM reminders WHERE user_id = ? AND target_type = 'exam' AND target_id = ?",
+        [g.current_user["id"], exam_id],
+    )
+    reminder_id = execute(
+        """
+        INSERT INTO reminders (user_id, target_type, target_id, remind_before_minutes, enabled)
+        VALUES (?, 'exam', ?, ?, 1)
+        """,
+        [g.current_user["id"], exam_id, remind_before_minutes],
+    )
+    reminder = fetch_one("SELECT * FROM reminders WHERE id = ?", [reminder_id])
+    return success_response("Exam reminder updated", reminder)
 @reminder_bp.route("/defaults/apply", methods=["POST"])
 @login_required
 def apply_default_reminders():

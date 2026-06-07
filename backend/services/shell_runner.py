@@ -1,4 +1,4 @@
-import json
+﻿import json
 import os
 import subprocess
 import sys
@@ -24,7 +24,11 @@ def get_bash_command():
 
 
 def bash_path(path):
-    return str(path).replace("\\", "/")
+    path_text = str(path).replace("\\", "/")
+    if len(path_text) >= 2 and path_text[1] == ":":
+        drive = path_text[0].lower()
+        return f"/{drive}{path_text[2:]}"
+    return path_text
 
 
 def run_shell(script_path, args=None, timeout=30):
