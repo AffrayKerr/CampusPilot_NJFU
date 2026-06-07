@@ -64,7 +64,7 @@ async function loadStatistics() {
 
     document.getElementById("statCourses").textContent = data.schedule?.course_count ?? 0
     document.getElementById("statExams").textContent = data.schedule?.exam_count ?? 0
-    document.getElementById("statTasks").textContent = data.tasks?.total ?? 0
+    document.getElementById("statTasks").textContent = data.tasks?.pending ?? 0
     document.getElementById("statSeatSuccess").textContent = data.seat?.success_count ?? 0
 }
 

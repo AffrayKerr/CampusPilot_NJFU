@@ -42,6 +42,17 @@ def run_shell(script_path, args=None, timeout=30):
     command = [bash_cmd, bash_path(full_script_path)] + [str(arg) for arg in args]
 
     env = os.environ.copy()
+    for proxy_key in (
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+    ):
+        env.pop(proxy_key, None)
+    env["NO_PROXY"] = "localhost,127.0.0.1,webvpn.njfu.edu.cn,.njfu.edu.cn"
+    env["no_proxy"] = env["NO_PROXY"]
     env["DATABASE_PATH"] = bash_path(PROJECT_ROOT / "database" / "campuspilot.db")
     env["PROJECT_ROOT"] = bash_path(PROJECT_ROOT)
     env["PYTHONIOENCODING"] = "utf-8"

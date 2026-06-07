@@ -20,16 +20,17 @@ window.onload = async () => {
 
 async function loadTodaySummary() {
     const data = await request("/schedule/today", {}, true)
-    if (!data) return
+    const statistics = await request("/user/statistics", {}, true)
+    if (!data && !statistics) return
 
     const courseEl = document.getElementById("todayCourseCount")
-    if (courseEl) courseEl.textContent = data.schedules?.length ?? 0
+    if (courseEl) courseEl.textContent = data?.schedules?.length ?? 0
 
     const taskEl = document.getElementById("todayTaskCount")
-    if (taskEl) taskEl.textContent = data.tasks?.length ?? 0
+    if (taskEl) taskEl.textContent = statistics?.tasks?.pending ?? data?.tasks?.length ?? 0
 
     const examEl = document.getElementById("todayExamCount")
-    if (examEl) examEl.textContent = data.exams?.length ?? 0
+    if (examEl) examEl.textContent = data?.exams?.length ?? 0
 }
 
 async function loadCampusStatus() {

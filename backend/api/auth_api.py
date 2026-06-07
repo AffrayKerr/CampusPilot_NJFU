@@ -97,6 +97,13 @@ def interactive_status():
         except _json.JSONDecodeError:
             pass
 
+    if status_content in {"starting", "in_progress"} and in_progress:
+        return jsonify({
+            "success": True,
+            "message": "Browser login in progress, please complete login in the browser window",
+            "data": {"status": "in_progress"},
+        })
+
     if in_progress:
         return jsonify({
             "success": True,

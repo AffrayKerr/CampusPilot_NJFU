@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 from __future__ import annotations
 
 import base64
@@ -18,6 +18,7 @@ try:
     from selenium.common.exceptions import TimeoutException, WebDriverException
     from selenium.webdriver.chrome.options import Options
     from selenium.webdriver.common.by import By
+    from selenium.webdriver.common.keys import Keys
     from selenium.webdriver.support.ui import WebDriverWait
 except ImportError:
     print(json.dumps({"success": False, "message": "selenium/cryptography is not installed", "data": None}, ensure_ascii=False))
@@ -120,15 +121,32 @@ def find_first(driver: webdriver.Chrome, selectors: list[tuple[str, str]]) -> An
     return None
 
 
+def set_input_value(driver: webdriver.Chrome, element: Any, value: str) -> None:
+    element.click()
+    element.send_keys(Keys.CONTROL, "a")
+    element.send_keys(Keys.BACKSPACE)
+    driver.execute_script(
+        """
+        const el = arguments[0];
+        const value = arguments[1];
+        el.value = value;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        """,
+        element,
+        value,
+    )
+
+
 def submit_cas_login(driver: webdriver.Chrome, username: str, password: str) -> None:
     user_el = WebDriverWait(driver, 30).until(lambda d: find_first(d, [(By.ID, "username"), (By.NAME, "username")]))
     pwd_el = find_first(driver, [(By.ID, "password"), (By.NAME, "password")])
     if pwd_el is None:
         raise RuntimeError("CAS password input not found")
-    user_el.clear()
-    user_el.send_keys(username)
-    pwd_el.clear()
-    pwd_el.send_keys(password)
+    set_input_value(driver, user_el, username)
+    set_input_value(driver, pwd_el, password)
+
+
     btn = find_first(driver, [(By.ID, "login-submit"), (By.CSS_SELECTOR, "button[type='submit']"), (By.CSS_SELECTOR, "input[type='submit']")])
     if btn is not None:
         btn.click()
@@ -157,12 +175,29 @@ def trigger_webvpn_login_page(driver: webdriver.Chrome) -> None:
             return
 
 
+def has_webvpn_auth_cookie(driver: webdriver.Chrome) -> bool:
+    expected_names = {"my_vpn_ticket", "my_client_ticket", "iPlanetDirectoryPro"}
+    try:
+        cookies = driver.execute_cdp_cmd("Network.getAllCookies", {}).get("cookies", [])
+    except Exception:
+        cookies = []
+    if not cookies:
+        try:
+            cookies = driver.get_cookies()
+        except Exception:
+            cookies = []
+    return any(c.get("name") in expected_names and "njfu.edu.cn" in (c.get("domain") or "") for c in cookies)
+
+
 def wait_webvpn_ready(driver: webdriver.Chrome, timeout: int) -> None:
     WebDriverWait(driver, timeout).until(lambda d: (
-        "authserver/login" not in d.current_url
-        and not is_webvpn_login_portal(d)
-        and d.current_url not in (WEBVPN_BASE, WEBVPN_BASE + "/")
-        and "webvpn.njfu.edu.cn" in d.current_url
+        has_webvpn_auth_cookie(d)
+        or (
+            "authserver/login" not in d.current_url
+            and not is_webvpn_login_portal(d)
+            and d.current_url not in (WEBVPN_BASE, WEBVPN_BASE + "/")
+            and "webvpn.njfu.edu.cn" in d.current_url
+        )
     ))
 
 
@@ -176,10 +211,10 @@ def auto_webvpn_login(driver: webdriver.Chrome, username: str, password: str) ->
         print(json.dumps({"status": "auto_login_no_cas_page", "current_url": driver.current_url}, ensure_ascii=False), file=sys.stderr)
 
     try:
-        wait_webvpn_ready(driver, 30)
+        wait_webvpn_ready(driver, TIMEOUT_SECONDS)
     except TimeoutException as exc:
-        if is_cas_login_page(driver):
-            raise RuntimeError("WebVPN/CAS login did not complete; please check campus account/password or captcha/MFA requirements") from exc
+        if is_cas_login_page(driver) or is_webvpn_login_portal(driver):
+            raise RuntimeError("WebVPN/CAS login did not complete in time; please finish captcha/MFA/login in the opened browser window") from exc
         raise RuntimeError(f"WebVPN did not become ready after login probes; current_url={driver.current_url}") from exc
 
     print(json.dumps({"status": "webvpn_ready", "current_url": driver.current_url}, ensure_ascii=False), file=sys.stderr)
